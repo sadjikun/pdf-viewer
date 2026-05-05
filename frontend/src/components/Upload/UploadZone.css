@@ -1,0 +1,57 @@
+.upload {
+  border: 2px dashed var(--border, #3a3f48);
+  border-radius: 8px;
+  padding: 3rem 2rem;
+  text-align: center;
+  max-width: 460px;
+  margin: 4rem auto;
+  background: var(--card, #1a1d24);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.upload.is-hover {
+  border-color: #5e9bff;
+  background: #1f2533;
+}
+
+.upload.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.upload-title {
+  font-size: 1.125rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.upload-or {
+  color: var(--muted, #8a8f99);
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+}
+
+.upload-btn {
+  background: #5e9bff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin: 0.5rem 0 1rem 0;
+}
+
+.upload-btn:hover:not(:disabled) {
+  background: #4a8af0;
+}
+
+.upload-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.upload-hint {
+  color: var(--muted, #8a8f99);
+  font-size: 0.8rem;
+  margin: 0;
+}

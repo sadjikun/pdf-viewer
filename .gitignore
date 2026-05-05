@@ -1,0 +1,42 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
+
+# Cache backend (PDFs traités, peut être lourd et privé)
+backend/cache/
+
+# Samples lourds (PDFs perso, gardés en local)
+samples/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# Build / dist Python
+build/
+dist/
+*.egg-info/

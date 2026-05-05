@@ -1,0 +1,148 @@
+.figovl-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 2rem;
+}
+
+@media (max-width: 600px) {
+  .figovl-backdrop {
+    padding: 0.5rem;
+  }
+}
+
+.figovl {
+  background: var(--card, #1a1d24);
+  border-radius: 8px;
+  max-width: min(92vw, 1100px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.figovl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border, #2a2d36);
+}
+
+.figovl-counter {
+  font-size: 0.875rem;
+  color: var(--muted, #8a8f99);
+}
+
+.figovl-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+}
+
+.figovl-close:hover {
+  background: var(--row-hover, #20232a);
+}
+
+.figovl-imgwrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0c10;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.figovl-img {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: white;
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .figovl-img {
+    max-height: 60vh;
+  }
+  .figovl-nav {
+    width: 36px;
+    height: 48px;
+    font-size: 1.5rem;
+  }
+}
+
+.figovl-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  color: white;
+  width: 40px;
+  height: 60px;
+  font-size: 2rem;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.figovl-nav:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.figovl-nav-prev {
+  left: 0.5rem;
+}
+
+.figovl-nav-next {
+  right: 0.5rem;
+}
+
+.figovl-foot {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border, #2a2d36);
+}
+
+.figovl-caption {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.figovl-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.figovl-page {
+  font-size: 0.8rem;
+  color: var(--muted, #8a8f99);
+}
+
+.figovl-goto {
+  background: #5e9bff;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.figovl-goto:hover {
+  background: #4a8af0;
+}

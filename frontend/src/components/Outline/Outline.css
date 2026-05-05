@@ -1,0 +1,81 @@
+.outline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.outline-children {
+  list-style: none;
+  padding-left: 1rem;
+  margin: 0;
+  border-left: 1px solid var(--border, #2a2d36);
+}
+
+.outline-item {
+  margin: 0;
+}
+
+.outline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.outline-row.is-active {
+  background: var(--active-bg, #2a3a5e);
+}
+
+.outline-row:hover {
+  background: var(--row-hover, #20232a);
+}
+
+.outline-toggle {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  width: 1rem;
+  font-size: 0.75rem;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.outline-toggle-empty {
+  cursor: default;
+}
+
+.outline-title {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  flex: 1;
+  padding: 0;
+  font: inherit;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.outline-title:hover {
+  text-decoration: underline;
+}
+
+.outline-page {
+  color: var(--muted, #8a8f99);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.outline-empty {
+  color: var(--muted, #8a8f99);
+  font-style: italic;
+  font-size: 0.875rem;
+  padding: 0.5rem;
+}
