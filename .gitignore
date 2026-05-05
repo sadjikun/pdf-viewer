@@ -40,3 +40,13 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# Documentation interne projet (gardee en local, pas publiee sur GitHub)
+CLAUDE.md
+DRAFT.md
+PHASE*_IMPLEMENT.md
+PROGRESS.md
+PROJECT_WAY.md
+SPEC.md
+TECHNICAL_DEBT.md
+TESTS.md
