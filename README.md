@@ -11,6 +11,36 @@ Visualiseur de PDF **local et self-hosted** avec navigation structurée :
 
 Pas de cloud, pas d'authentification, pas de stockage partagé. Un user, une machine.
 
+## Quick Start
+
+> [!IMPORTANT]
+> **Python 3.13 requis** (le `requirements.txt` est figé sur cette version). Sur macOS : `brew install python@3.13`. Sur Linux : `pyenv install 3.13`.
+
+```bash
+git clone git@github.com:sadjikun/pdf-viewer.git
+cd pdf-viewer
+
+# Backend (~2 Go de deps via Docling/torch — patiente quelques minutes)
+cd backend
+python3.13 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload &
+cd ..
+
+# Frontend (autre terminal recommandé)
+cd frontend
+npm install
+npm run dev
+```
+
+Puis ouvre **http://localhost:5173**. Pour un PDF de test rapide :
+
+```bash
+mkdir -p samples && curl -L -o samples/test.pdf https://arxiv.org/pdf/2510.04871v1.pdf
+```
+
+Et drop `samples/test.pdf` dans la zone d'upload. ~25s de traitement la première fois (Docling + téléchargement modèles RapidOCR ~40 Mo), instantané ensuite via le cache.
+
 ## Stack
 
 | Couche | Tech |
@@ -21,48 +51,12 @@ Pas de cloud, pas d'authentification, pas de stockage partagé. Un user, une mac
 | Rendu PDF | [react-pdf](https://github.com/wojtekmaj/react-pdf) (wrapper PDF.js) |
 | Cache | Disque, clé `sha256(PDF)` tronqué 16 hex |
 
-## Installation
+## Prérequis
 
-### Prérequis
+- **Python 3.13** (impératif — `requirements.txt` fige les versions transitives sur cette version)
+- **Node.js ≥ 20**
 
-- Python 3.13
-- Node.js ≥ 20
-
-### Backend
-
-```bash
-cd backend
-python3.13 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-`requirements.txt` fige les versions exactes de Docling et de toutes ses transitives — install reproductible.
-
-> **Note** : Docling télécharge les modèles RapidOCR (~40 Mo) lors du premier traitement de PDF, dans `.venv/lib/.../rapidocr/models/`. Pas avant.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-```
-
-## Lancement
-
-Deux processus en parallèle (deux terminaux ou via tmux/screen) :
-
-```bash
-# Terminal 1 — backend
-cd backend && source .venv/bin/activate && uvicorn main:app --reload
-# → http://localhost:8000
-
-# Terminal 2 — frontend
-cd frontend && npm run dev
-# → http://localhost:5173
-```
-
-Ouvre `http://localhost:5173/` dans ton navigateur.
+`requirements.txt` fige Docling + toutes ses transitives (106 packages, install reproductible). Docling télécharge les modèles RapidOCR (~40 Mo) au premier traitement de PDF, pas au `pip install`.
 
 ## Utilisation
 
