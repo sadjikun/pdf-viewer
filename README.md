@@ -41,6 +41,40 @@ mkdir -p samples && curl -L -o samples/test.pdf https://arxiv.org/pdf/2510.04871
 
 Et drop `samples/test.pdf` dans la zone d'upload. ~25s de traitement la première fois (Docling + téléchargement modèles RapidOCR ~40 Mo), instantané ensuite via le cache.
 
+### Windows
+
+```powershell
+git clone https://github.com/sadjikun/pdf-viewer.git
+cd pdf-viewer\backend
+
+# Utiliser py -3.13 pour cibler la bonne version (pas juste "python")
+py -3.13 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# Pre-telecharger les modeles Docling (une seule fois, ~400 Mo)
+python -m docling.cli.models download
+
+uvicorn main:app --reload
+```
+
+```powershell
+# Frontend (second terminal)
+cd pdf-viewer\frontend
+npm install
+npm run dev
+```
+
+> [!NOTE]
+> **IPv6 / Hugging Face** : si le téléchargement des modèles échoue avec `WinError 10054`, c'est un problème IPv6. Contournement : forcer IPv4 en ajoutant en tête de `pipeline.py` :
+> ```python
+> import socket
+> _orig = socket.getaddrinfo
+> def _ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+>     return _orig(host, port, socket.AF_INET, type, proto, flags)
+> socket.getaddrinfo = _ipv4_only
+> ```
+
 ## Stack
 
 | Couche | Tech |

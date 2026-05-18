@@ -70,7 +70,7 @@ async def process(file: UploadFile = File(...)) -> JSONResponse:
     ddir = _doc_dir(doc_id)
 
     if (ddir / "result.json").exists():
-        with open(ddir / "result.json") as f:
+        with open(ddir / "result.json", encoding="utf-8") as f:
             return JSONResponse(json.load(f))
 
     ddir.mkdir(parents=True, exist_ok=True)
@@ -89,7 +89,7 @@ async def process(file: UploadFile = File(...)) -> JSONResponse:
 
     result["doc_id"] = doc_id
 
-    with open(ddir / "result.json", "w") as f:
+    with open(ddir / "result.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     return JSONResponse(result)
@@ -100,7 +100,7 @@ def get_outline(doc_id: str) -> dict[str, Any]:
     p = _doc_dir(doc_id) / "result.json"
     if not p.exists():
         raise HTTPException(404, "Document inconnu")
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         return json.load(f).get("outline", {})
 
 
@@ -117,7 +117,7 @@ def get_raw(doc_id: str) -> dict[str, Any]:
     p = _doc_dir(doc_id) / "result.json"
     if not p.exists():
         raise HTTPException(404, "Document inconnu")
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         return json.load(f)
 
 
