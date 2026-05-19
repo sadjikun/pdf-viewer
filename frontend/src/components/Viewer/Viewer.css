@@ -51,10 +51,14 @@
 
 /* Highlight des correspondances de recherche dans la TextLayer */
 .react-pdf__Page__textContent mark.search-hit {
-  background: rgba(255, 224, 102, 0.7);
+  background: rgba(255, 224, 102, 0.5);
   color: inherit;
   padding: 0;
   border-radius: 2px;
+}
+
+.react-pdf__Page__textContent mark.search-hit-active {
+  background: rgba(255, 140, 0, 0.8);
 }
 
 .viewer-msg {

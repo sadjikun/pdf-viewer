@@ -22,6 +22,8 @@ const PAGE_PADDING = 32; // doit matcher le padding CSS .viewer (1rem * 2)
 
 export interface ViewerHandle {
   scrollToPage: (page: number) => void;
+  scrollToMatch: (index: number) => void;
+  countMatches: () => number;
 }
 
 interface Props {
@@ -29,8 +31,10 @@ interface Props {
   pages?: PageInfo[];
   figures?: Figure[];
   searchQuery?: string;
+  activeMatchIndex?: number;
   onPageChange?: (page: number) => void;
   onFigureClick?: (index: number) => void;
+  onMatchCountChange?: (count: number) => void;
 }
 
 function escapeHtml(s: string): string {
@@ -46,21 +50,38 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+let _matchCounter = 0;
+
 function makeTextRenderer(query: string) {
   if (!query.trim()) return undefined;
   const re = new RegExp(escapeRe(query.trim()), "gi");
   return ({ str }: { str: string }) =>
-    escapeHtml(str).replace(re, (m) => `<mark class="search-hit">${escapeHtml(m)}</mark>`);
+    escapeHtml(str).replace(re, (m) => {
+      const idx = _matchCounter++;
+      return `<mark class="search-hit" data-match-index="${idx}">${escapeHtml(m)}</mark>`;
+    });
 }
 
 export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
-  { url, pages, figures, searchQuery, onPageChange, onFigureClick },
+  { url, pages, figures, searchQuery, activeMatchIndex = -1, onPageChange, onFigureClick, onMatchCountChange },
   ref,
 ) {
-  const textRenderer = useMemo(
-    () => makeTextRenderer(searchQuery ?? ""),
-    [searchQuery],
-  );
+  const textRenderer = useMemo(() => {
+    _matchCounter = 0;
+    return makeTextRenderer(searchQuery ?? "");
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    root.querySelectorAll("mark.search-hit-active").forEach((el) =>
+      el.classList.remove("search-hit-active"),
+    );
+    if (activeMatchIndex >= 0) {
+      const el = root.querySelector(`mark[data-match-index="${activeMatchIndex}"]`);
+      if (el) el.classList.add("search-hit-active");
+    }
+  }, [activeMatchIndex]);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pageWidth, setPageWidth] = useState(MAX_PAGE_WIDTH);
@@ -116,10 +137,28 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
     };
   }, [numPages, onPageChange]);
 
+  useEffect(() => {
+    if (!containerRef.current || !onMatchCountChange) return;
+    const timer = setTimeout(() => {
+      const marks = containerRef.current?.querySelectorAll("mark.search-hit");
+      onMatchCountChange(marks?.length ?? 0);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [searchQuery, numPages, onMatchCountChange]);
+
   useImperativeHandle(ref, () => ({
     scrollToPage(page: number) {
       const el = pageRefs.current.get(page);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    scrollToMatch(index: number) {
+      const el = containerRef.current?.querySelector(
+        `mark[data-match-index="${index}"]`,
+      );
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+    countMatches() {
+      return containerRef.current?.querySelectorAll("mark.search-hit").length ?? 0;
     },
   }));
 
