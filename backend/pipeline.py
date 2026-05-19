@@ -21,6 +21,7 @@ Configurable via variables d'environnement PDF_BATCH_SIZE et PDF_BATCH_THRESHOLD
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -30,28 +31,56 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
+log = logging.getLogger(__name__)
 
 _NUM_PREFIX = re.compile(r"^\s*(\d+(?:\.\d+)*)\.?(?=\s|$)")
 
 BATCH_SIZE = int(os.environ.get("PDF_BATCH_SIZE", "30"))
 BATCH_THRESHOLD = int(os.environ.get("PDF_BATCH_THRESHOLD", "50"))
 
+_converter_cache: dict[tuple[bool, bool], DocumentConverter] = {}
 
-def _options(batch_mode: bool = False) -> PdfPipelineOptions:
+
+def _options(batch_mode: bool = False, do_ocr: bool = True) -> PdfPipelineOptions:
     opts = PdfPipelineOptions()
-    opts.do_ocr = True
+    opts.do_ocr = do_ocr
     opts.do_table_structure = True
     opts.generate_picture_images = True
     opts.images_scale = 1.0 if batch_mode else 2.0
     return opts
 
 
-def _converter(batch_mode: bool = False) -> DocumentConverter:
-    return DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=_options(batch_mode))
-        }
-    )
+def _converter(batch_mode: bool = False, do_ocr: bool = True) -> DocumentConverter:
+    key = (batch_mode, do_ocr)
+    if key not in _converter_cache:
+        log.info("Chargement converter (batch=%s, ocr=%s)", batch_mode, do_ocr)
+        _converter_cache[key] = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=_options(batch_mode, do_ocr)
+                )
+            }
+        )
+    return _converter_cache[key]
+
+
+def _is_native_pdf(pdf_path: Path, sample_pages: int = 3) -> bool:
+    """Détecte si le PDF contient du texte extractible (natif) ou nécessite l'OCR."""
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument(str(pdf_path))
+    n = min(len(pdf), sample_pages)
+    has_text = False
+    for i in range(n):
+        page = pdf[i]
+        tp = page.get_textpage()
+        text = tp.get_text_range()
+        tp.close()
+        page.close()
+        if len(text.strip()) > 50:
+            has_text = True
+            break
+    pdf.close()
+    return has_text
 
 
 def _bbox_to_list(bbox) -> list[float] | None:
@@ -176,15 +205,23 @@ def _construire_arbre(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def convertir_pdf(pdf_path: Path, out_dir: Path) -> dict[str, Any]:
     """Convertit un PDF avec Docling et exporte la structure + figures."""
     n_pages = _count_pages(pdf_path)
+    native = _is_native_pdf(pdf_path)
+    do_ocr = not native
+    log.info(
+        "%s — %d pages, %s, OCR %s",
+        pdf_path.name, n_pages,
+        "natif" if native else "scanne",
+        "OFF" if native else "ON",
+    )
 
     if n_pages > BATCH_THRESHOLD:
-        return _convertir_batch(pdf_path, out_dir, n_pages)
-    return _convertir_simple(pdf_path, out_dir)
+        return _convertir_batch(pdf_path, out_dir, n_pages, do_ocr)
+    return _convertir_simple(pdf_path, out_dir, do_ocr)
 
 
-def _convertir_simple(pdf_path: Path, out_dir: Path) -> dict[str, Any]:
+def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dict[str, Any]:
     """Conversion single-pass pour les PDFs courts."""
-    converter = _converter()
+    converter = _converter(do_ocr=do_ocr)
     doc = converter.convert(str(pdf_path)).document
 
     figures_dir = out_dir / "figures"
@@ -210,9 +247,11 @@ def _convertir_simple(pdf_path: Path, out_dir: Path) -> dict[str, Any]:
     }
 
 
-def _convertir_batch(pdf_path: Path, out_dir: Path, n_pages: int) -> dict[str, Any]:
+def _convertir_batch(
+    pdf_path: Path, out_dir: Path, n_pages: int, do_ocr: bool = True,
+) -> dict[str, Any]:
     """Conversion par tranches pour les gros PDFs (évite la saturation RAM)."""
-    converter = _converter(batch_mode=True)
+    converter = _converter(batch_mode=True, do_ocr=do_ocr)
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
 
