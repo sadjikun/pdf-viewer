@@ -34,6 +34,9 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 log = logging.getLogger(__name__)
 
 _NUM_PREFIX = re.compile(r"^\s*(\d+(?:\.\d+)*)\.?(?=\s|$)")
+_CHAPTER_PREFIX = re.compile(r"^\s*chapter\s+(\d+)", re.IGNORECASE)
+_MIN_TITLE_LEN = 3
+_MAX_TITLE_LEN = 120
 
 BATCH_SIZE = int(os.environ.get("PDF_BATCH_SIZE", "30"))
 BATCH_THRESHOLD = int(os.environ.get("PDF_BATCH_THRESHOLD", "50"))
@@ -160,10 +163,26 @@ def _extraire_figures(
     return figures
 
 
+def _est_faux_positif(title: str, seen: set[str]) -> bool:
+    """Filtre les SectionHeader parasites détectés par Docling (TD-007)."""
+    if len(title) < _MIN_TITLE_LEN:
+        return True
+    if len(title) > _MAX_TITLE_LEN:
+        return True
+    key = title.lower().strip()
+    if key in seen:
+        return True
+    seen.add(key)
+    return False
+
+
 def _extraire_sections(
     doc, page_offset: int = 0, section_offset: int = 0,
+    seen_titles: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Extrait les SectionHeader en liste plate (sans arbre)."""
+    if seen_titles is None:
+        seen_titles = set()
     sections: list[dict[str, Any]] = []
     for i, item in enumerate(doc.texts):
         label = getattr(item, "label", None)
@@ -174,6 +193,8 @@ def _extraire_sections(
         if page is not None:
             page += page_offset
         title = (item.text or "").strip()
+        if _est_faux_positif(title, seen_titles):
+            continue
         inferred = _level_depuis_titre(title)
         level = inferred if inferred is not None else int(getattr(item, "level", 1) or 1)
         sections.append({
@@ -259,6 +280,7 @@ def _convertir_batch(
     all_figures: list[dict[str, Any]] = []
     all_sections: list[dict[str, Any]] = []
     md_parts: list[str] = []
+    seen_titles: set[str] = set()
 
     fig_counter = 0
     section_counter = 0
@@ -276,7 +298,9 @@ def _convertir_batch(
             all_figures.extend(
                 _extraire_figures(doc, figures_dir, page_offset, fig_counter)
             )
-            batch_sections = _extraire_sections(doc, page_offset, section_counter)
+            batch_sections = _extraire_sections(
+                doc, page_offset, section_counter, seen_titles,
+            )
             all_sections.extend(batch_sections)
 
             fig_counter += len(doc.pictures)
@@ -310,7 +334,9 @@ def _convertir_batch(
 
 
 def _level_depuis_titre(title: str) -> int | None:
-    """Niveau déduit de la numérotation ('2.' → 1, '2.1.' → 2, '2.1.3' → 3)."""
+    """Niveau déduit de la numérotation ('2.' → 1, '2.1.' → 2, 'Chapter 3' → 1)."""
+    if _CHAPTER_PREFIX.match(title):
+        return 1
     m = _NUM_PREFIX.match(title)
     if not m:
         return None
