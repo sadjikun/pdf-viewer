@@ -3,7 +3,7 @@
 > Vue macro des phases et epics. Chaque phase terminee a un fichier `PHASE<N>_IMPLEMENT.md`.
 > Suivi detaille : [`PROGRESS.md`](./PROGRESS.md) | Dette : [`TECHNICAL_DEBT.md`](./TECHNICAL_DEBT.md) | Spec : [`SPEC.md`](./SPEC.md)
 
-**Derniere MAJ** : 2026-05-05 (Phase 4 EN COURS : 4.2/4.3/4.7 faits)
+**Derniere MAJ** : 2026-05-06 (publication GitHub, pas de changement de statut)
 
 ---
 
