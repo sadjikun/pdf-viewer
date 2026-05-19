@@ -23,6 +23,8 @@ function App() {
   const [figureIdx, setFigureIdx] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile only
   const [query, setQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
+  const [matchTotal, setMatchTotal] = useState(0);
   const viewerRef = useRef<ViewerHandle>(null);
 
   useEffect(() => {
@@ -140,7 +142,26 @@ function App() {
           {doc.n_pages} page{doc.n_pages > 1 ? "s" : ""} · {doc.n_figures} figure
           {doc.n_figures > 1 ? "s" : ""}
         </div>
-        <SearchBar value={query} onChange={setQuery} />
+        <SearchBar
+          value={query}
+          onChange={(v) => {
+            setQuery(v);
+            setMatchIndex(0);
+            setMatchTotal(0);
+          }}
+          matchIndex={matchIndex}
+          matchTotal={matchTotal}
+          onPrev={() => {
+            const prev = matchTotal > 0 ? (matchIndex - 1 + matchTotal) % matchTotal : 0;
+            setMatchIndex(prev);
+            viewerRef.current?.scrollToMatch(prev);
+          }}
+          onNext={() => {
+            const next = matchTotal > 0 ? (matchIndex + 1) % matchTotal : 0;
+            setMatchIndex(next);
+            viewerRef.current?.scrollToMatch(next);
+          }}
+        />
         <div className="app-tabs" role="tablist">
           <button
             type="button"
@@ -174,8 +195,10 @@ function App() {
           pages={doc.pages}
           figures={doc.figures}
           searchQuery={query}
+          activeMatchIndex={matchIndex}
           onPageChange={handlePageChange}
           onFigureClick={setFigureIdx}
+          onMatchCountChange={setMatchTotal}
         />
       </main>
       {current && (
