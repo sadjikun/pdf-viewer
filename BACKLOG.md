@@ -3,7 +3,7 @@
 > Vue macro des phases et epics. Chaque phase terminee a un fichier `PHASE<N>_IMPLEMENT.md`.
 > Suivi detaille : [`PROGRESS.md`](./PROGRESS.md) | Dette : [`TECHNICAL_DEBT.md`](./TECHNICAL_DEBT.md) | Spec : [`SPEC.md`](./SPEC.md)
 
-**Derniere MAJ** : 2026-05-06 (publication GitHub, pas de changement de statut)
+**Derniere MAJ** : 2026-05-19 (4.8 Windows + 4.9 perf pipeline faits, TD-007 resolu)
 
 ---
 
@@ -29,7 +29,7 @@
 | 1.3 | **Smoke test** | Pipeline run sur paper arxiv `2510.04871v1.pdf` | Fait (12 pages, 33 sections, 2 figures extraites) |
 | 1.4 | **Hierarchie outline** | Reconstruire la hierarchie depuis numerotation (`2.1.` enfant de `2.`) | Fait (TD-001 RESOLU) |
 | 1.5 | **Robustesse `/process`** | Limite 100 Mo, check `%PDF`, try/except Docling, nettoyage cache partiel | Fait (TD-004 et TD-005 RESOLUS) |
-| 1.6 | **Test sur PDFs varies** | 5 PDFs : papers EN 12p/26p, doc HSE 1p, CV FR, DMT FR | Fait (TD-007 ouvert : sur-detection SectionHeader Docling sur docs admin) |
+| 1.6 | **Test sur PDFs varies** | 5 PDFs : papers EN 12p/26p, doc HSE 1p, CV FR, DMT FR | Fait (TD-007 RESOLU 2026-05-19 via filtres outline) |
 
 Voir [`PHASE1_IMPLEMENT.md`](./PHASE1_IMPLEMENT.md) pour le detail.
 
@@ -79,3 +79,5 @@ Voir [`PHASE3_IMPLEMENT.md`](./PHASE3_IMPLEMENT.md) pour le detail.
 | 4.5 | **Performance** | Virtualisation pages, code-splitting bundle JS (TD-008) | A faire |
 | 4.6 | **Tests unitaires backend** | pytest sur `pipeline.py` (snapshot result.json sur PDFs samples, TD-006) | A faire |
 | 4.7 | **Doc utilisateur** | `README.md` avec installation + lancement + cas d'usage + raccourcis. `requirements.txt` (pip freeze 106 packages) + `.gitignore` ajoutes. | Fait (2026-05-05) |
+| 4.8 | **Compatibilite Windows** | `uvloop` conditionne `sys_platform != 'win32'`, `encoding='utf-8'` sur `open()` JSON, section Windows README (py -3.13, modeles, IPv6). Issu d'un rapport d'installation externe. | Fait (2026-05-18) |
+| 4.9 | **Performance pipeline** | Batch processing PDFs > 50p (pypdfium2), auto-detection natif/scanne (skip OCR), singleton converter (cache modeles), filtres faux positifs outline (TD-007). Benchmark : 25s → 8.5s sur paper 12p. | Fait (2026-05-19) |
