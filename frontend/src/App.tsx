@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
@@ -7,15 +7,38 @@ import { Outline } from "./components/Outline/Outline";
 import { SearchBar } from "./components/Search/SearchBar";
 import { Tables } from "./components/Tables/Tables";
 import { UploadZone } from "./components/Upload/UploadZone";
-import { Viewer, type ViewerHandle } from "./components/Viewer/Viewer";
+import type { ViewerHandle } from "./components/Viewer/Viewer";
+
+const Viewer = lazy(() =>
+  import("./components/Viewer/Viewer").then((m) => ({ default: m.Viewer }))
+);
 import { findActiveSection, flattenOutline } from "./outline";
 import type { DocResult, OutlineNode } from "./types";
 import "./App.css";
 
 const LS_KEY = "pdf-viewer:lastDocId";
+const THEME_KEY = "pdf-viewer:theme";
 type Tab = "outline" | "gallery" | "tables";
+type Theme = "dark" | "light";
+
+function useTheme() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved === "light" ? "light" : "dark";
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+  const toggle = useCallback(
+    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    [],
+  );
+  return { theme, toggle };
+}
 
 function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [doc, setDoc] = useState<DocResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +117,9 @@ function App() {
       <div className="app-empty">
         <header className="app-header">
           <h1>pdf-viewer</h1>
+          <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
         </header>
         {loading && <LoadingDocling />}
         {error && <div className="app-error">{error}</div>}
@@ -126,6 +152,9 @@ function App() {
         <div className="app-sidebar-header">
           <h2>{tab === "outline" ? "Sommaire" : "Galerie"}</h2>
           <div className="app-actions">
+            <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
+              {theme === "dark" ? "☀" : "☾"}
+            </button>
             <a
               className="app-action"
               href={markdownUrl(doc.doc_id)}
@@ -202,17 +231,19 @@ function App() {
         )}
       </aside>
       <main className="app-main">
-        <Viewer
-          ref={viewerRef}
-          url={pdfUrl(doc.doc_id)}
-          pages={doc.pages}
-          figures={doc.figures}
-          searchQuery={query}
-          activeMatchIndex={matchIndex}
-          onPageChange={handlePageChange}
-          onFigureClick={setFigureIdx}
-          onMatchCountChange={setMatchTotal}
-        />
+        <Suspense fallback={<p className="viewer-msg">Chargement du viewer…</p>}>
+          <Viewer
+            ref={viewerRef}
+            url={pdfUrl(doc.doc_id)}
+            pages={doc.pages}
+            figures={doc.figures}
+            searchQuery={query}
+            activeMatchIndex={matchIndex}
+            onPageChange={handlePageChange}
+            onFigureClick={setFigureIdx}
+            onMatchCountChange={setMatchTotal}
+          />
+        </Suspense>
       </main>
       {current && (
         <FigureOverlay
