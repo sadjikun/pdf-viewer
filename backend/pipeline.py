@@ -163,6 +163,31 @@ def _extraire_figures(
     return figures
 
 
+def _extraire_tables(
+    doc, page_offset: int = 0, table_offset: int = 0,
+) -> list[dict[str, Any]]:
+    tables: list[dict[str, Any]] = []
+    for i, table in enumerate(doc.tables):
+        table_id = f"t_{table_offset + i}"
+        page, bbox = _provenance(table)
+        if page is not None:
+            page += page_offset
+        caption = table.caption_text(doc) if hasattr(table, "caption_text") else ""
+        html = ""
+        try:
+            html = table.export_to_html(doc) if hasattr(table, "export_to_html") else ""
+        except Exception:
+            pass
+        tables.append({
+            "id": table_id,
+            "page": page,
+            "bbox": bbox,
+            "caption": caption or "",
+            "html": html or "",
+        })
+    return tables
+
+
 def _est_faux_positif(title: str, seen: set[str]) -> bool:
     """Filtre les SectionHeader parasites détectés par Docling (TD-007)."""
     if len(title) < _MIN_TITLE_LEN:
@@ -250,6 +275,7 @@ def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dic
 
     pages = _extraire_pages(doc)
     figures = _extraire_figures(doc, figures_dir)
+    tables = _extraire_tables(doc)
     sections = _extraire_sections(doc)
     outline = _construire_arbre(sections)
 
@@ -263,8 +289,10 @@ def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dic
         "pages": pages,
         "outline": outline,
         "figures": figures,
+        "tables": tables,
         "n_pages": len(pages),
         "n_figures": len(figures),
+        "n_tables": len(tables),
     }
 
 
@@ -278,11 +306,13 @@ def _convertir_batch(
 
     all_pages: list[dict[str, Any]] = []
     all_figures: list[dict[str, Any]] = []
+    all_tables: list[dict[str, Any]] = []
     all_sections: list[dict[str, Any]] = []
     md_parts: list[str] = []
     seen_titles: set[str] = set()
 
     fig_counter = 0
+    table_counter = 0
     section_counter = 0
 
     for batch_start in range(1, n_pages + 1, BATCH_SIZE):
@@ -298,12 +328,16 @@ def _convertir_batch(
             all_figures.extend(
                 _extraire_figures(doc, figures_dir, page_offset, fig_counter)
             )
+            all_tables.extend(
+                _extraire_tables(doc, page_offset, table_counter)
+            )
             batch_sections = _extraire_sections(
                 doc, page_offset, section_counter, seen_titles,
             )
             all_sections.extend(batch_sections)
 
             fig_counter += len(doc.pictures)
+            table_counter += len(doc.tables)
             section_counter += sum(
                 1 for item in doc.texts
                 if "section_header" in str(getattr(item, "label", "")).lower()
@@ -328,8 +362,10 @@ def _convertir_batch(
         "pages": all_pages,
         "outline": outline,
         "figures": all_figures,
+        "tables": all_tables,
         "n_pages": len(all_pages),
         "n_figures": len(all_figures),
+        "n_tables": len(all_tables),
     }
 
 

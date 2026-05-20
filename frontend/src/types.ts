@@ -22,11 +22,21 @@ export interface Figure {
   caption: string;
 }
 
+export interface TableItem {
+  id: string;
+  page: number | null;
+  bbox: Bbox | null;
+  caption: string;
+  html: string;
+}
+
 export interface DocResult {
   doc_id: string;
   n_pages: number;
   n_figures: number;
+  n_tables: number;
   pages: PageInfo[];
   outline: OutlineNode[];
   figures: Figure[];
+  tables: TableItem[];
 }

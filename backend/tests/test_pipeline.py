@@ -185,6 +185,18 @@ class TestConvertirArxiv:
         pngs = list(figs_dir.glob("*.png"))
         assert len(pngs) == 2
 
+    def test_n_tables(self):
+        assert self.r["n_tables"] == 5
+
+    def test_tables_have_html(self):
+        for t in self.r["tables"]:
+            assert t["html"], f"Table {t['id']} has no HTML"
+
+    def test_tables_have_page(self):
+        for t in self.r["tables"]:
+            assert t["page"] is not None
+            assert 1 <= t["page"] <= 12
+
 
 @pytest.mark.skipif(not HSE_PDF.exists(), reason="HSE PDF absent")
 class TestConvertirHSE:

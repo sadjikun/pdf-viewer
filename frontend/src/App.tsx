@@ -5,6 +5,7 @@ import { Gallery } from "./components/Gallery/Gallery";
 import { LoadingDocling } from "./components/Loading/LoadingDocling";
 import { Outline } from "./components/Outline/Outline";
 import { SearchBar } from "./components/Search/SearchBar";
+import { Tables } from "./components/Tables/Tables";
 import { UploadZone } from "./components/Upload/UploadZone";
 import { Viewer, type ViewerHandle } from "./components/Viewer/Viewer";
 import { findActiveSection, flattenOutline } from "./outline";
@@ -12,7 +13,7 @@ import type { DocResult, OutlineNode } from "./types";
 import "./App.css";
 
 const LS_KEY = "pdf-viewer:lastDocId";
-type Tab = "outline" | "gallery";
+type Tab = "outline" | "gallery" | "tables";
 
 function App() {
   const [doc, setDoc] = useState<DocResult | null>(null);
@@ -140,7 +141,8 @@ function App() {
         </div>
         <div className="app-sidebar-meta">
           {doc.n_pages} page{doc.n_pages > 1 ? "s" : ""} · {doc.n_figures} figure
-          {doc.n_figures > 1 ? "s" : ""}
+          {doc.n_figures > 1 ? "s" : ""} · {doc.n_tables ?? 0} table
+          {(doc.n_tables ?? 0) > 1 ? "s" : ""}
         </div>
         <SearchBar
           value={query}
@@ -181,11 +183,22 @@ function App() {
           >
             Galerie
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "tables"}
+            className={`app-tab${tab === "tables" ? " is-active" : ""}`}
+            onClick={() => setTab("tables")}
+          >
+            Tables
+          </button>
         </div>
         {tab === "outline" ? (
           <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
-        ) : (
+        ) : tab === "gallery" ? (
           <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} />
+        ) : (
+          <Tables tables={doc.tables ?? []} onGotoPage={gotoPage} />
         )}
       </aside>
       <main className="app-main">
