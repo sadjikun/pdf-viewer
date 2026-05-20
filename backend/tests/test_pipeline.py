@@ -71,6 +71,11 @@ class TestEstFauxPositif:
         assert self.fn("References", seen) is False
         assert self.fn("references", seen) is True
 
+    def test_duplicate_same_title_different_page_allowed(self):
+        seen = set()
+        assert self.fn("Introduction", seen, page=1, bbox=[1, 2, 3, 4]) is False
+        assert self.fn("Introduction", seen, page=2, bbox=[1, 2, 3, 4]) is False
+
     def test_single_char(self):
         assert self.fn("A", set()) is True
 
@@ -97,6 +102,21 @@ class TestIsNativePdf:
         if not HSE_PDF.exists():
             pytest.skip("HSE PDF absent")
         assert _is_native_pdf(HSE_PDF) is True
+
+
+class TestNeedsOcr:
+    def setup_method(self):
+        from pipeline import _needs_ocr_from_lengths
+        self.fn = _needs_ocr_from_lengths
+
+    def test_all_native_pages_skip_ocr(self):
+        assert self.fn([120, 300, 80]) is False
+
+    def test_all_scanned_pages_need_ocr(self):
+        assert self.fn([0, 3, 10]) is True
+
+    def test_mixed_pages_need_ocr(self):
+        assert self.fn([180, 0, 220]) is True
 
 
 class TestExtractPagesPdf:

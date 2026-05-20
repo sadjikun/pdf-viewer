@@ -4,7 +4,6 @@ Endpoints :
 - POST /process : upload PDF, lance Docling, retourne {doc_id, outline, pages, figures}
 - GET  /doc/{doc_id}/outline   : arbre des sections
 - GET  /doc/{doc_id}/figure/{fig_id} : image d'une figure
-- GET  /doc/{doc_id}/page/{n}        : aperçu d'une page (PNG)
 - GET  /doc/{doc_id}/raw              : DoclingDocument JSON complet
 
 Cache : sur disque, clé = sha256 du PDF. Ne re-traite pas si déjà vu.
@@ -13,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -26,6 +26,8 @@ CACHE_DIR = ROOT / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 Mo
+DOC_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+FIG_ID_RE = re.compile(r"^f_\d+$")
 
 app = FastAPI(title="PDF Viewer API", version="0.1.0")
 
@@ -39,7 +41,14 @@ app.add_middleware(
 
 
 def _doc_dir(doc_id: str) -> Path:
+    if not DOC_ID_RE.fullmatch(doc_id):
+        raise HTTPException(400, "Identifiant document invalide")
     return CACHE_DIR / doc_id
+
+
+def _validate_fig_id(fig_id: str) -> None:
+    if not FIG_ID_RE.fullmatch(fig_id):
+        raise HTTPException(400, "Identifiant figure invalide")
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -106,6 +115,7 @@ def get_outline(doc_id: str) -> dict[str, Any]:
 
 @app.get("/doc/{doc_id}/figure/{fig_id}")
 def get_figure(doc_id: str, fig_id: str) -> FileResponse:
+    _validate_fig_id(fig_id)
     p = _doc_dir(doc_id) / "figures" / f"{fig_id}.png"
     if not p.exists():
         raise HTTPException(404, "Figure inconnue")

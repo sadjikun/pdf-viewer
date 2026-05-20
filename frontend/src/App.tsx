@@ -20,6 +20,11 @@ const LS_KEY = "pdf-viewer:lastDocId";
 const THEME_KEY = "pdf-viewer:theme";
 type Tab = "outline" | "gallery" | "tables";
 type Theme = "dark" | "light";
+const TAB_TITLES: Record<Tab, string> = {
+  outline: "Sommaire",
+  gallery: "Galerie",
+  tables: "Tables",
+};
 
 function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
@@ -150,7 +155,7 @@ function App() {
       />
       <aside className="app-sidebar">
         <div className="app-sidebar-header">
-          <h2>{tab === "outline" ? "Sommaire" : "Galerie"}</h2>
+          <h2>{TAB_TITLES[tab]}</h2>
           <div className="app-actions">
             <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
               {theme === "dark" ? "☀" : "☾"}
