@@ -91,11 +91,11 @@
 }
 
 .app-tab:hover {
-  color: #e6e8ec;
+  color: var(--fg);
 }
 
 .app-tab.is-active {
-  color: #e6e8ec;
+  color: var(--fg);
   border-bottom-color: #5e9bff;
 }
 
@@ -107,13 +107,31 @@
 
 .app-header {
   padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid var(--border, #2a2d36);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .app-header h1 {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+.app-theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.app-theme-toggle:hover {
+  background: var(--row-hover);
+  color: var(--fg);
 }
 
 .app-loading,
@@ -125,8 +143,8 @@
 
 .app-error {
   color: #ff6b6b;
-  background: #2a1517;
-  border: 1px solid #5b2a2e;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
   padding: 0.75rem 1rem;
   border-radius: 6px;
 }
@@ -157,9 +175,9 @@
   width: 40px;
   height: 40px;
   border-radius: 6px;
-  background: rgba(20, 22, 28, 0.92);
+  background: var(--hamburger-bg);
   border: 1px solid var(--border, #2a2d36);
-  color: #e6e8ec;
+  color: var(--fg);
   font-size: 1.25rem;
   cursor: pointer;
   align-items: center;

@@ -19,6 +19,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 const MAX_PAGE_WIDTH = 900;
 const PAGE_PADDING = 32; // doit matcher le padding CSS .viewer (1rem * 2)
+const PAGE_WINDOW = 3;
 
 export interface ViewerHandle {
   scrollToPage: (page: number) => void;
@@ -50,14 +51,12 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-let _matchCounter = 0;
-
-function makeTextRenderer(query: string) {
+function makeTextRenderer(query: string, counter: { current: number }) {
   if (!query.trim()) return undefined;
   const re = new RegExp(escapeRe(query.trim()), "gi");
   return ({ str }: { str: string }) =>
     escapeHtml(str).replace(re, (m) => {
-      const idx = _matchCounter++;
+      const idx = counter.current++;
       return `<mark class="search-hit" data-match-index="${idx}">${escapeHtml(m)}</mark>`;
     });
 }
@@ -66,28 +65,75 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
   { url, pages, figures, searchQuery, activeMatchIndex = -1, onPageChange, onFigureClick, onMatchCountChange },
   ref,
 ) {
-  const textRenderer = useMemo(() => {
-    _matchCounter = 0;
-    return makeTextRenderer(searchQuery ?? "");
-  }, [searchQuery]);
-
-  useEffect(() => {
-    const root = containerRef.current;
-    if (!root) return;
-    root.querySelectorAll("mark.search-hit-active").forEach((el) =>
-      el.classList.remove("search-hit-active"),
-    );
-    if (activeMatchIndex >= 0) {
-      const el = root.querySelector(`mark[data-match-index="${activeMatchIndex}"]`);
-      if (el) el.classList.add("search-hit-active");
-    }
-  }, [activeMatchIndex]);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pageWidth, setPageWidth] = useState(MAX_PAGE_WIDTH);
+  const [currentPage, setCurrentPage] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const visiblePages = useRef<Set<number>>(new Set());
+  const matchCounterRef = useRef(0);
+  const matchSyncTimer = useRef<number | null>(null);
+
+  const hasSearch = Boolean(searchQuery?.trim());
+  const textRenderer = useMemo(() => {
+    matchCounterRef.current = 0;
+    return makeTextRenderer(searchQuery ?? "", matchCounterRef);
+  }, [searchQuery]);
+
+  const pageInfoByNumber = useMemo(() => {
+    return new Map((pages ?? []).map((p) => [p.number, p]));
+  }, [pages]);
+
+  const pageNumbers = useMemo(() => {
+    const n = numPages ?? pages?.length ?? 0;
+    return Array.from({ length: n }, (_, i) => i + 1);
+  }, [numPages, pages]);
+
+  const pagePlaceholderHeight = useCallback(
+    (page: number) => {
+      const info = pageInfoByNumber.get(page);
+      if (info?.width && info.height) {
+        return (info.height / info.width) * pageWidth;
+      }
+      return pageWidth * 1.414;
+    },
+    [pageInfoByNumber, pageWidth],
+  );
+
+  const shouldRenderPage = useCallback(
+    (page: number) => hasSearch || Math.abs(page - currentPage) <= PAGE_WINDOW,
+    [currentPage, hasSearch],
+  );
+
+  const syncSearchHits = useCallback(() => {
+    const root = containerRef.current;
+    if (!root) return;
+
+    const marks = Array.from(root.querySelectorAll("mark.search-hit"));
+    marks.forEach((el, idx) => {
+      const nextIndex = String(idx);
+      if (el.getAttribute("data-match-index") !== nextIndex) {
+        el.setAttribute("data-match-index", nextIndex);
+      }
+      el.classList.toggle("search-hit-active", idx === activeMatchIndex);
+    });
+    onMatchCountChange?.(marks.length);
+  }, [activeMatchIndex, onMatchCountChange]);
+
+  const scheduleMatchSync = useCallback(() => {
+    if (matchSyncTimer.current != null) {
+      window.clearTimeout(matchSyncTimer.current);
+    }
+    matchSyncTimer.current = window.setTimeout(() => {
+      matchSyncTimer.current = null;
+      syncSearchHits();
+    }, 80);
+  }, [syncSearchHits]);
+
+  useEffect(() => {
+    scheduleMatchSync();
+  }, [activeMatchIndex, scheduleMatchSync]);
 
   // Largeur de page = largeur dispo du container, plafonnée à MAX_PAGE_WIDTH
   useEffect(() => {
@@ -125,6 +171,7 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
         }
         if (visible.size > 0) {
           const top = Math.min(...visible);
+          setCurrentPage(top);
           onPageChange(top);
         }
       },
@@ -138,13 +185,27 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
   }, [numPages, onPageChange]);
 
   useEffect(() => {
-    if (!containerRef.current || !onMatchCountChange) return;
-    const timer = setTimeout(() => {
-      const marks = containerRef.current?.querySelectorAll("mark.search-hit");
-      onMatchCountChange(marks?.length ?? 0);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [searchQuery, numPages, onMatchCountChange]);
+    const root = containerRef.current;
+    if (!root || !hasSearch) {
+      onMatchCountChange?.(0);
+      return;
+    }
+    scheduleMatchSync();
+    const observer = new MutationObserver(scheduleMatchSync);
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-match-index", "class"],
+    });
+    return () => {
+      observer.disconnect();
+      if (matchSyncTimer.current != null) {
+        window.clearTimeout(matchSyncTimer.current);
+        matchSyncTimer.current = null;
+      }
+    };
+  }, [hasSearch, numPages, onMatchCountChange, scheduleMatchSync, searchQuery]);
 
   useImperativeHandle(ref, () => ({
     scrollToPage(page: number) {
@@ -182,23 +243,33 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer(
         }
       >
         {numPages != null &&
-          Array.from({ length: numPages }, (_, i) => i + 1).map((p) => {
-            const pageInfo = pages?.find((pp) => pp.number === p);
+          pageNumbers.map((p) => {
+            const pageInfo = pageInfoByNumber.get(p);
+            const renderPage = shouldRenderPage(p);
             const pageFigures = figures
               ? figures
                   .map((f, idx) => ({ f, idx }))
                   .filter(({ f }) => f.page === p && f.bbox)
               : [];
             return (
-              <div key={p} className="viewer-page" ref={setPageRef(p)} data-page={p}>
-                <Page
-                  pageNumber={p}
-                  width={pageWidth}
-                  renderAnnotationLayer
-                  renderTextLayer
-                  customTextRenderer={textRenderer}
-                />
-                {pageInfo && pageFigures.length > 0 && (
+              <div
+                key={p}
+                className={`viewer-page${renderPage ? "" : " viewer-page-placeholder"}`}
+                ref={setPageRef(p)}
+                data-page={p}
+                style={renderPage ? undefined : { width: pageWidth, height: pagePlaceholderHeight(p) }}
+              >
+                {renderPage && (
+                  <Page
+                    pageNumber={p}
+                    width={pageWidth}
+                    renderAnnotationLayer
+                    renderTextLayer
+                    customTextRenderer={textRenderer}
+                    onRenderTextLayerSuccess={scheduleMatchSync}
+                  />
+                )}
+                {renderPage && pageInfo && pageFigures.length > 0 && (
                   <div className="viewer-figmarkers">
                     {pageFigures.map(({ f, idx }) => {
                       const pct = bboxToPct(f.bbox!, pageInfo);

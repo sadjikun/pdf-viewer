@@ -13,6 +13,22 @@
   background: white;
 }
 
+.viewer-page-placeholder {
+  box-shadow: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent),
+    rgba(255, 255, 255, 0.08);
+  background-size: 220px 100%, 100% 100%;
+  background-position: -220px 0, 0 0;
+  animation: viewer-placeholder 1.2s ease-in-out infinite;
+}
+
+@keyframes viewer-placeholder {
+  to {
+    background-position: calc(100% + 220px) 0, 0 0;
+  }
+}
+
 .viewer-page-label {
   position: absolute;
   top: 4px;

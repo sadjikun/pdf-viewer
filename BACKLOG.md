@@ -3,7 +3,7 @@
 > Vue macro des phases et epics. Chaque phase terminee a un fichier `PHASE<N>_IMPLEMENT.md`.
 > Suivi detaille : [`PROGRESS.md`](./PROGRESS.md) | Dette : [`TECHNICAL_DEBT.md`](./TECHNICAL_DEBT.md) | Spec : [`SPEC.md`](./SPEC.md)
 
-**Derniere MAJ** : 2026-05-19 (4.8 Windows + 4.9 perf pipeline faits, TD-007 resolu)
+**Derniere MAJ** : 2026-05-20 (Phase 4 TERMINEE — tous epics 4.1-4.9 faits)
 
 ---
 
@@ -68,16 +68,18 @@ Voir [`PHASE3_IMPLEMENT.md`](./PHASE3_IMPLEMENT.md) pour le detail.
 
 ---
 
-## Phase 4 — Polish + robustesse — EN COURS
+## Phase 4 — Polish + robustesse — TERMINEE (2026-05-20)
 
 | # | Epic | Taches | Statut |
 |---|---|---|---|
-| 4.1 | **Tables structurees** | Affichage table extraite par Docling (TableFormer) | A faire |
-| 4.2 | **Recherche dans le PDF** | `<SearchBar>` + highlight via `customTextRenderer` react-pdf (V0 : pas de compteur ni nav prev/next) | Fait (2026-05-05) |
+| 4.1 | **Tables structurees** | Extraction HTML Docling (`export_to_html`), composant `<Tables>` frontend, 3e onglet sidebar (Sommaire/Galerie/Tables). | Fait (2026-05-20) |
+| 4.2 | **Recherche dans le PDF** | V0 (2026-05-05) : highlight `customTextRenderer`. **V1** (2026-05-19) : compteur N/M, nav prev/next, Cmd+F, match actif orange. | Fait (2026-05-19) |
 | 4.3 | **Export markdown** | `result.md` ecrit a /process + endpoint `GET /doc/{id}/markdown` avec lazy regen pour les docs legacy. Bouton `.md` cote frontend. | Fait (2026-05-05) |
-| 4.4 | **Mode sombre** | Toggle theme clair/sombre (deja sombre par defaut) | A faire |
-| 4.5 | **Performance** | Virtualisation pages, code-splitting bundle JS (TD-008) | A faire |
-| 4.6 | **Tests unitaires backend** | pytest sur `pipeline.py` (snapshot result.json sur PDFs samples, TD-006) | A faire |
+| 4.4 | **Mode sombre/clair** | Variables CSS dark/light, toggle via `data-theme` sur `<html>`, persiste localStorage. Bouton dans header et sidebar. | Fait (2026-05-20) |
+| 4.5 | **Performance frontend** | Code-splitting `React.lazy()` sur Viewer. Chunk principal 627→206 kB (TD-008 RESOLU). | Fait (2026-05-20) |
+| 4.6 | **Tests unitaires backend** | pytest 35 tests : unitaires (_level, _est_faux_positif, helpers) + snapshots end-to-end (arxiv 12p, HSE 1p). TD-006 RESOLU. | Fait (2026-05-20) |
 | 4.7 | **Doc utilisateur** | `README.md` avec installation + lancement + cas d'usage + raccourcis. `requirements.txt` (pip freeze 106 packages) + `.gitignore` ajoutes. | Fait (2026-05-05) |
 | 4.8 | **Compatibilite Windows** | `uvloop` conditionne `sys_platform != 'win32'`, `encoding='utf-8'` sur `open()` JSON, section Windows README (py -3.13, modeles, IPv6). Issu d'un rapport d'installation externe. | Fait (2026-05-18) |
 | 4.9 | **Performance pipeline** | Batch processing PDFs > 50p (pypdfium2), auto-detection natif/scanne (skip OCR), singleton converter (cache modeles), filtres faux positifs outline (TD-007). Benchmark : 25s → 8.5s sur paper 12p. | Fait (2026-05-19) |
+
+Voir [`PHASE4_IMPLEMENT.md`](./PHASE4_IMPLEMENT.md) pour le detail.

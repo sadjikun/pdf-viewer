@@ -1,20 +1,49 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
 import { LoadingDocling } from "./components/Loading/LoadingDocling";
 import { Outline } from "./components/Outline/Outline";
 import { SearchBar } from "./components/Search/SearchBar";
+import { Tables } from "./components/Tables/Tables";
 import { UploadZone } from "./components/Upload/UploadZone";
-import { Viewer, type ViewerHandle } from "./components/Viewer/Viewer";
+import type { ViewerHandle } from "./components/Viewer/Viewer";
+
+const Viewer = lazy(() =>
+  import("./components/Viewer/Viewer").then((m) => ({ default: m.Viewer }))
+);
 import { findActiveSection, flattenOutline } from "./outline";
 import type { DocResult, OutlineNode } from "./types";
 import "./App.css";
 
 const LS_KEY = "pdf-viewer:lastDocId";
-type Tab = "outline" | "gallery";
+const THEME_KEY = "pdf-viewer:theme";
+type Tab = "outline" | "gallery" | "tables";
+type Theme = "dark" | "light";
+const TAB_TITLES: Record<Tab, string> = {
+  outline: "Sommaire",
+  gallery: "Galerie",
+  tables: "Tables",
+};
+
+function useTheme() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved === "light" ? "light" : "dark";
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+  const toggle = useCallback(
+    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    [],
+  );
+  return { theme, toggle };
+}
 
 function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [doc, setDoc] = useState<DocResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +122,9 @@ function App() {
       <div className="app-empty">
         <header className="app-header">
           <h1>pdf-viewer</h1>
+          <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
         </header>
         {loading && <LoadingDocling />}
         {error && <div className="app-error">{error}</div>}
@@ -123,8 +155,11 @@ function App() {
       />
       <aside className="app-sidebar">
         <div className="app-sidebar-header">
-          <h2>{tab === "outline" ? "Sommaire" : "Galerie"}</h2>
+          <h2>{TAB_TITLES[tab]}</h2>
           <div className="app-actions">
+            <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
+              {theme === "dark" ? "☀" : "☾"}
+            </button>
             <a
               className="app-action"
               href={markdownUrl(doc.doc_id)}
@@ -140,7 +175,8 @@ function App() {
         </div>
         <div className="app-sidebar-meta">
           {doc.n_pages} page{doc.n_pages > 1 ? "s" : ""} · {doc.n_figures} figure
-          {doc.n_figures > 1 ? "s" : ""}
+          {doc.n_figures > 1 ? "s" : ""} · {doc.n_tables ?? 0} table
+          {(doc.n_tables ?? 0) > 1 ? "s" : ""}
         </div>
         <SearchBar
           value={query}
@@ -181,25 +217,38 @@ function App() {
           >
             Galerie
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "tables"}
+            className={`app-tab${tab === "tables" ? " is-active" : ""}`}
+            onClick={() => setTab("tables")}
+          >
+            Tables
+          </button>
         </div>
         {tab === "outline" ? (
           <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
-        ) : (
+        ) : tab === "gallery" ? (
           <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} />
+        ) : (
+          <Tables tables={doc.tables ?? []} onGotoPage={gotoPage} />
         )}
       </aside>
       <main className="app-main">
-        <Viewer
-          ref={viewerRef}
-          url={pdfUrl(doc.doc_id)}
-          pages={doc.pages}
-          figures={doc.figures}
-          searchQuery={query}
-          activeMatchIndex={matchIndex}
-          onPageChange={handlePageChange}
-          onFigureClick={setFigureIdx}
-          onMatchCountChange={setMatchTotal}
-        />
+        <Suspense fallback={<p className="viewer-msg">Chargement du viewer…</p>}>
+          <Viewer
+            ref={viewerRef}
+            url={pdfUrl(doc.doc_id)}
+            pages={doc.pages}
+            figures={doc.figures}
+            searchQuery={query}
+            activeMatchIndex={matchIndex}
+            onPageChange={handlePageChange}
+            onFigureClick={setFigureIdx}
+            onMatchCountChange={setMatchTotal}
+          />
+        </Suspense>
       </main>
       {current && (
         <FigureOverlay

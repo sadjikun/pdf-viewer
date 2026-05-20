@@ -37,6 +37,7 @@ _NUM_PREFIX = re.compile(r"^\s*(\d+(?:\.\d+)*)\.?(?=\s|$)")
 _CHAPTER_PREFIX = re.compile(r"^\s*chapter\s+(\d+)", re.IGNORECASE)
 _MIN_TITLE_LEN = 3
 _MAX_TITLE_LEN = 120
+_TEXT_NATIVE_THRESHOLD = 50
 
 BATCH_SIZE = int(os.environ.get("PDF_BATCH_SIZE", "30"))
 BATCH_THRESHOLD = int(os.environ.get("PDF_BATCH_THRESHOLD", "50"))
@@ -69,21 +70,44 @@ def _converter(batch_mode: bool = False, do_ocr: bool = True) -> DocumentConvert
 
 def _is_native_pdf(pdf_path: Path, sample_pages: int = 3) -> bool:
     """Détecte si le PDF contient du texte extractible (natif) ou nécessite l'OCR."""
+    lengths = _page_text_lengths(pdf_path, sample_pages)
+    return bool(lengths) and all(n > _TEXT_NATIVE_THRESHOLD for n in lengths)
+
+
+def _needs_ocr(pdf_path: Path, sample_pages: int | None = None) -> bool:
+    """Retourne True si au moins une page inspectée semble dépourvue de texte natif."""
+    return _needs_ocr_from_lengths(_page_text_lengths(pdf_path, sample_pages))
+
+
+def _needs_ocr_from_lengths(lengths: list[int]) -> bool:
+    """Décision OCR depuis des longueurs de texte par page."""
+    return not lengths or any(n <= _TEXT_NATIVE_THRESHOLD for n in lengths)
+
+
+def _page_text_lengths(pdf_path: Path, sample_pages: int | None = None) -> list[int]:
+    """Longueur du texte extractible par page, sans charger Docling."""
     import pypdfium2 as pdfium
     pdf = pdfium.PdfDocument(str(pdf_path))
-    n = min(len(pdf), sample_pages)
-    has_text = False
-    for i in range(n):
-        page = pdf[i]
-        tp = page.get_textpage()
-        text = tp.get_text_range()
-        tp.close()
-        page.close()
-        if len(text.strip()) > 50:
-            has_text = True
-            break
-    pdf.close()
-    return has_text
+    try:
+        total = len(pdf)
+        n = min(total, sample_pages) if sample_pages is not None else total
+        lengths: list[int] = []
+        for i in range(n):
+            page = None
+            tp = None
+            try:
+                page = pdf[i]
+                tp = page.get_textpage()
+                text = tp.get_text_range()
+                lengths.append(len(text.strip()))
+            finally:
+                if tp is not None:
+                    tp.close()
+                if page is not None:
+                    page.close()
+        return lengths
+    finally:
+        pdf.close()
 
 
 def _bbox_to_list(bbox) -> list[float] | None:
@@ -153,7 +177,7 @@ def _extraire_figures(
             if img is not None:
                 img.save(figures_dir / f"{fig_id}.png")
         except Exception:
-            pass
+            log.exception("Echec export image figure %s", fig_id)
         figures.append({
             "id": fig_id,
             "page": page,
@@ -163,13 +187,55 @@ def _extraire_figures(
     return figures
 
 
-def _est_faux_positif(title: str, seen: set[str]) -> bool:
+def _extraire_tables(
+    doc, page_offset: int = 0, table_offset: int = 0,
+) -> list[dict[str, Any]]:
+    tables: list[dict[str, Any]] = []
+    for i, table in enumerate(doc.tables):
+        table_id = f"t_{table_offset + i}"
+        page, bbox = _provenance(table)
+        if page is not None:
+            page += page_offset
+        caption = table.caption_text(doc) if hasattr(table, "caption_text") else ""
+        html = ""
+        try:
+            html = table.export_to_html(doc) if hasattr(table, "export_to_html") else ""
+        except Exception:
+            log.exception("Echec export HTML table %s", table_id)
+        tables.append({
+            "id": table_id,
+            "page": page,
+            "bbox": bbox,
+            "caption": caption or "",
+            "html": html or "",
+        })
+    return tables
+
+
+def _outline_dedup_key(
+    title: str,
+    page: int | None = None,
+    bbox: list[float] | None = None,
+) -> tuple[Any, ...]:
+    key = title.lower().strip()
+    if page is None:
+        return (key,)
+    rounded_bbox = tuple(round(v, 1) for v in bbox) if bbox else None
+    return (key, page, rounded_bbox)
+
+
+def _est_faux_positif(
+    title: str,
+    seen: set[tuple[Any, ...]],
+    page: int | None = None,
+    bbox: list[float] | None = None,
+) -> bool:
     """Filtre les SectionHeader parasites détectés par Docling (TD-007)."""
     if len(title) < _MIN_TITLE_LEN:
         return True
     if len(title) > _MAX_TITLE_LEN:
         return True
-    key = title.lower().strip()
+    key = _outline_dedup_key(title, page, bbox)
     if key in seen:
         return True
     seen.add(key)
@@ -178,7 +244,7 @@ def _est_faux_positif(title: str, seen: set[str]) -> bool:
 
 def _extraire_sections(
     doc, page_offset: int = 0, section_offset: int = 0,
-    seen_titles: set[str] | None = None,
+    seen_titles: set[tuple[Any, ...]] | None = None,
 ) -> list[dict[str, Any]]:
     """Extrait les SectionHeader en liste plate (sans arbre)."""
     if seen_titles is None:
@@ -193,7 +259,7 @@ def _extraire_sections(
         if page is not None:
             page += page_offset
         title = (item.text or "").strip()
-        if _est_faux_positif(title, seen_titles):
+        if _est_faux_positif(title, seen_titles, page, bbox):
             continue
         inferred = _level_depuis_titre(title)
         level = inferred if inferred is not None else int(getattr(item, "level", 1) or 1)
@@ -226,17 +292,17 @@ def _construire_arbre(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def convertir_pdf(pdf_path: Path, out_dir: Path) -> dict[str, Any]:
     """Convertit un PDF avec Docling et exporte la structure + figures."""
     n_pages = _count_pages(pdf_path)
-    native = _is_native_pdf(pdf_path)
-    do_ocr = not native
+    if n_pages > BATCH_THRESHOLD:
+        log.info("%s — %d pages, batch, OCR par tranche", pdf_path.name, n_pages)
+        return _convertir_batch(pdf_path, out_dir, n_pages)
+
+    do_ocr = _needs_ocr(pdf_path)
     log.info(
         "%s — %d pages, %s, OCR %s",
         pdf_path.name, n_pages,
-        "natif" if native else "scanne",
-        "OFF" if native else "ON",
+        "natif" if not do_ocr else "scanne/mixte",
+        "ON" if do_ocr else "OFF",
     )
-
-    if n_pages > BATCH_THRESHOLD:
-        return _convertir_batch(pdf_path, out_dir, n_pages, do_ocr)
     return _convertir_simple(pdf_path, out_dir, do_ocr)
 
 
@@ -250,6 +316,7 @@ def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dic
 
     pages = _extraire_pages(doc)
     figures = _extraire_figures(doc, figures_dir)
+    tables = _extraire_tables(doc)
     sections = _extraire_sections(doc)
     outline = _construire_arbre(sections)
 
@@ -257,32 +324,35 @@ def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dic
         md = doc.export_to_markdown()
         (out_dir / "result.md").write_text(md, encoding="utf-8")
     except Exception:
-        pass
+        log.exception("Echec export markdown single-pass pour %s", pdf_path.name)
 
     return {
         "pages": pages,
         "outline": outline,
         "figures": figures,
+        "tables": tables,
         "n_pages": len(pages),
         "n_figures": len(figures),
+        "n_tables": len(tables),
     }
 
 
 def _convertir_batch(
-    pdf_path: Path, out_dir: Path, n_pages: int, do_ocr: bool = True,
+    pdf_path: Path, out_dir: Path, n_pages: int,
 ) -> dict[str, Any]:
     """Conversion par tranches pour les gros PDFs (évite la saturation RAM)."""
-    converter = _converter(batch_mode=True, do_ocr=do_ocr)
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
 
     all_pages: list[dict[str, Any]] = []
     all_figures: list[dict[str, Any]] = []
+    all_tables: list[dict[str, Any]] = []
     all_sections: list[dict[str, Any]] = []
     md_parts: list[str] = []
-    seen_titles: set[str] = set()
+    seen_titles: set[tuple[Any, ...]] = set()
 
     fig_counter = 0
+    table_counter = 0
     section_counter = 0
 
     for batch_start in range(1, n_pages + 1, BATCH_SIZE):
@@ -292,11 +362,16 @@ def _convertir_batch(
         tmp_pdf = out_dir / f"_batch_{batch_start}_{batch_end}.pdf"
         try:
             _extract_pages_pdf(pdf_path, batch_start, batch_end, tmp_pdf)
+            batch_do_ocr = _needs_ocr(tmp_pdf)
+            converter = _converter(batch_mode=True, do_ocr=batch_do_ocr)
             doc = converter.convert(str(tmp_pdf)).document
 
             all_pages.extend(_extraire_pages(doc, page_offset))
             all_figures.extend(
                 _extraire_figures(doc, figures_dir, page_offset, fig_counter)
+            )
+            all_tables.extend(
+                _extraire_tables(doc, page_offset, table_counter)
             )
             batch_sections = _extraire_sections(
                 doc, page_offset, section_counter, seen_titles,
@@ -304,6 +379,7 @@ def _convertir_batch(
             all_sections.extend(batch_sections)
 
             fig_counter += len(doc.pictures)
+            table_counter += len(doc.tables)
             section_counter += sum(
                 1 for item in doc.texts
                 if "section_header" in str(getattr(item, "label", "")).lower()
@@ -312,7 +388,11 @@ def _convertir_batch(
             try:
                 md_parts.append(doc.export_to_markdown())
             except Exception:
-                pass
+                log.exception(
+                    "Echec export markdown batch pages %s-%s",
+                    batch_start,
+                    batch_end,
+                )
         finally:
             tmp_pdf.unlink(missing_ok=True)
 
@@ -322,14 +402,16 @@ def _convertir_batch(
         md = "\n\n".join(md_parts)
         (out_dir / "result.md").write_text(md, encoding="utf-8")
     except Exception:
-        pass
+        log.exception("Echec ecriture markdown batch pour %s", pdf_path.name)
 
     return {
         "pages": all_pages,
         "outline": outline,
         "figures": all_figures,
+        "tables": all_tables,
         "n_pages": len(all_pages),
         "n_figures": len(all_figures),
+        "n_tables": len(all_tables),
     }
 
 

@@ -6,6 +6,7 @@ Visualiseur de PDF **local et self-hosted** avec navigation structurée :
 - **Galerie de figures** extraites comme objets de première classe (clic → preview HD + caption)
 - **Recherche plein-texte** dans le PDF avec highlight
 - **Export Markdown** du document
+- **Tables structurées** extraites et rendues dans la sidebar
 - Synchronisation bidirectionnelle scroll viewer ↔ outline
 - Mix natif + scanné géré automatiquement (OCR auto via Docling/RapidOCR)
 
@@ -99,6 +100,7 @@ npm run dev
 3. Une fois traité :
    - Onglet **Sommaire** : navigation par section (clic → scroll viewer)
    - Onglet **Galerie** : grille des figures du document (clic → preview HD)
+   - Onglet **Tables** : aperçu des tables extraites avec saut vers la page
    - **Recherche** : tape un mot dans la barre, matches surlignés en jaune dans le PDF
    - **Markers figures** : rectangles bleus cliquables sur chaque figure dans le viewer
    - Bouton **`.md`** dans la sidebar : télécharge l'export Markdown du document
@@ -113,6 +115,8 @@ Le doc actif est mémorisé dans `localStorage` — au prochain refresh, il est 
 | `Enter` / `Space` (focus section) | Activer la section |
 | `←` / `→` (overlay figure) | Figure précédente / suivante |
 | `Escape` (overlay figure) | Fermer |
+| `Cmd/Ctrl+F` | Focus recherche |
+| `Enter` / `Shift+Enter` (recherche) | Résultat suivant / précédent |
 
 ### Mobile
 
@@ -129,7 +133,7 @@ pdf-viewer/
     cache/<doc_id>/       ← source.pdf, result.json, result.md, figures/
   frontend/
     src/
-      components/         ← Outline, Viewer, Gallery, Figure, Loading, Search, Upload
+      components/         ← Outline, Viewer, Gallery, Figure, Tables, Loading, Search, Upload
       api.ts, types.ts, bbox.ts, outline.ts
     package.json
   samples/                ← PDFs de test (gros fichiers non commités)
@@ -153,10 +157,9 @@ pdf-viewer/
 ## Limitations connues
 
 - **Taille max upload** : 100 Mo (constante `MAX_UPLOAD_BYTES` dans `main.py`)
-- **Performance** : ≈25s pour un paper de 12 pages, ≈80s pour 26 pages, sur CPU. Pas adapté à de très gros documents en l'état.
-- **Sur-détection SectionHeader** sur docs admin (CV, formulaires) — Docling classe parfois des fragments inline en titres de section. Bruit visuel, pas de crash.
+- **Performance** : ≈8–17s pour un paper natif de 12 pages après chargement des modèles, plus long sur PDFs scannés/OCR. Les très gros documents restent à valider sur un corpus réel.
+- **Sur-détection SectionHeader** possible sur docs admin (CV, formulaires) malgré les filtres conservateurs. Bruit visuel, pas de crash.
 - **Pas de packaging Docker / exe** : lancement manuel via `uvicorn` + `npm run dev`.
-- **Pas de tests automatisés backend** (POC, voir Phase 4.6 dans le backlog).
 
 Détail dans [TECHNICAL_DEBT.md](./TECHNICAL_DEBT.md).
 
