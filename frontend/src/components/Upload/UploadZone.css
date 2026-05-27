@@ -1,57 +1,121 @@
 .upload {
-  border: 2px dashed var(--border, #3a3f48);
-  border-radius: 8px;
-  padding: 3rem 2rem;
+  border: 1.5px dashed var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: 3.5rem 2rem;
   text-align: center;
-  max-width: 460px;
+  max-width: 480px;
   margin: 4rem auto;
-  background: var(--card, #1a1d24);
-  transition: border-color 0.15s, background 0.15s;
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-card);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
 }
 
 .upload.is-hover {
-  border-color: #5e9bff;
-  background: #1f2533;
+  border-color: var(--accent-color);
+  background: rgba(99, 102, 241, 0.1);
+  transform: scale(1.02);
+  box-shadow: var(--shadow-glow);
 }
 
 .upload.is-disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   pointer-events: none;
 }
 
 .upload-title {
-  font-size: 1.125rem;
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
   margin: 0 0 0.5rem 0;
+  letter-spacing: -0.01em;
+}
+
+.upload-sub {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  margin: 0 0 0.75rem 0;
+  line-height: 1.4;
 }
 
 .upload-or {
-  color: var(--muted, #8a8f99);
-  font-size: 0.875rem;
-  margin: 0.25rem 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+  font-style: italic;
 }
 
 .upload-btn {
-  background: #5e9bff;
-  color: white;
+  background: var(--accent-gradient);
+  color: #fff;
   border: none;
-  padding: 0.5rem 1.25rem;
-  border-radius: 6px;
-  font-size: 0.95rem;
+  padding: 0.6rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-ui);
   cursor: pointer;
-  margin: 0.5rem 0 1rem 0;
+  margin: 0.75rem 0 1.25rem 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
 }
 
 .upload-btn:hover:not(:disabled) {
-  background: #4a8af0;
+  background: var(--accent-gradient-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+.upload-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .upload-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+  box-shadow: none;
 }
 
 .upload-hint {
-  color: var(--muted, #8a8f99);
-  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.upload-fastmode-container {
+  display: flex;
+  justify-content: center;
+  margin: 0.75rem 0;
+}
+
+.upload-fastmode-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s, color 0.2s;
+}
+
+.upload-fastmode-label:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.upload-fastmode-label input[type="checkbox"] {
+  accent-color: var(--accent-color);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
   margin: 0;
 }
+

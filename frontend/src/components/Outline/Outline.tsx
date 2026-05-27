@@ -63,7 +63,7 @@ function OutlineItem({ node, onSelect, activeId }: ItemProps) {
   const isActive = activeId === node.id;
 
   return (
-    <li className="outline-item">
+    <li className={`outline-item outline-item-l${node.level ?? 1}`}>
       <div
         className={`outline-row${isActive ? " is-active" : ""}`}
         data-section-id={node.id}
@@ -75,7 +75,17 @@ function OutlineItem({ node, onSelect, activeId }: ItemProps) {
             aria-label={expanded ? "Réduire" : "Développer"}
             onClick={() => setExpanded((v) => !v)}
           >
-            {expanded ? "▾" : "▸"}
+            <svg
+              className={`outline-chevron${expanded ? " is-expanded" : ""}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
           </button>
         ) : (
           <span className="outline-toggle outline-toggle-empty" />
@@ -83,10 +93,15 @@ function OutlineItem({ node, onSelect, activeId }: ItemProps) {
         <button
           type="button"
           className="outline-title"
-          onClick={() => onSelect(node)}
+          onClick={() => {
+            onSelect(node);
+            if (hasChildren) {
+              setExpanded((v) => !v);
+            }
+          }}
           title={node.title}
         >
-          {node.title}
+          <span className="outline-text">{node.title}</span>
           {node.page != null && <span className="outline-page">p.{node.page}</span>}
         </button>
       </div>

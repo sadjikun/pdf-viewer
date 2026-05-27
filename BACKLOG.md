@@ -1,9 +1,12 @@
 # pdf-viewer — Backlog
 
+> Tracker de tâches vivant. Vue résumée : [`memory/phases.md`](memory/phases.md)  
+> Dette technique : [`memory/technical-debt.md`](memory/technical-debt.md)
+
 > Vue macro des phases et epics. Chaque phase terminee a un fichier `PHASE<N>_IMPLEMENT.md`.
 > Suivi detaille : [`PROGRESS.md`](./PROGRESS.md) | Dette : [`TECHNICAL_DEBT.md`](./TECHNICAL_DEBT.md) | Spec : [`SPEC.md`](./SPEC.md)
 
-**Derniere MAJ** : 2026-05-05 (Phase 4 EN COURS : 4.2/4.3/4.7 faits)
+**Derniere MAJ** : 2026-05-20 (Phase 4 EN COURS : 4.2/4.3/4.7 faits + Phase 5 Reader Interactive Book démarrée)
 
 ---
 
@@ -75,7 +78,23 @@ Voir [`PHASE3_IMPLEMENT.md`](./PHASE3_IMPLEMENT.md) pour le detail.
 | 4.1 | **Tables structurees** | Affichage table extraite par Docling (TableFormer) | A faire |
 | 4.2 | **Recherche dans le PDF** | `<SearchBar>` + highlight via `customTextRenderer` react-pdf (V0 : pas de compteur ni nav prev/next) | Fait (2026-05-05) |
 | 4.3 | **Export markdown** | `result.md` ecrit a /process + endpoint `GET /doc/{id}/markdown` avec lazy regen pour les docs legacy. Bouton `.md` cote frontend. | Fait (2026-05-05) |
-| 4.4 | **Mode sombre** | Toggle theme clair/sombre (deja sombre par defaut) | A faire |
+| 4.4 | **Mode sombre** | Toggle theme clair/sombre | Fait (dans Reader Interactive Book) |
 | 4.5 | **Performance** | Virtualisation pages, code-splitting bundle JS (TD-008) | A faire |
-| 4.6 | **Tests unitaires backend** | pytest sur `pipeline.py` (snapshot result.json sur PDFs samples, TD-006) | A faire |
-| 4.7 | **Doc utilisateur** | `README.md` avec installation + lancement + cas d'usage + raccourcis. `requirements.txt` (pip freeze 106 packages) + `.gitignore` ajoutes. | Fait (2026-05-05) |
+| 4.6 | **Tests unitaires backend** | pytest sur `pipeline.py` (16 tests unitaires unit, TD-006) | Fait |
+| 4.7 | **Doc utilisateur** | `README.md` avec installation + lancement + cas d'usage + raccourcis. `requirements.txt` (pip freeze 106 packages) + `.gitignore` ajoutes. | Fait |
+
+---
+
+## Phase 5 — Reader "Interactive Book" — EN COURS
+
+| # | Epic | Taches | Statut |
+|---|---|---|---|
+| 5.1 | **Export HTML Docling** | `doc.export_to_html(ImageRefMode.EMBEDDED)` + endpoint `GET /doc/{id}/html` + `_merge_pdf_lines()` | Fait |
+| 5.2 | **Refonte Reader** | Design Interactive Book (Source Serif 4, orange accent, dark mode), typography popup, progress bar, jump-to-top | Fait |
+| 5.3 | **Navigation focus mode** | Clic sidebar → affiche UNIQUEMENT la section cliquée + prev/next + retour | Fait |
+| 5.4 | **Figures pleine resolution** | `margin: 24px -44px`, `max-width: none`, strip attributs inline Docling | Fait |
+| 5.5 | **Formules formula-not-decoded** | CSS pour `div`/`span.formula-not-decoded` + fix `LEAF_DIV_CLASSES` dans `sectionizeHtml` | Fait |
+| 5.6 | **Fix PDF viewer worker** | CDN unpkg au lieu de Vite `?url` import pour pdf.worker.min.mjs | Fait |
+| 5.7 | **Fix nom de fichier** | Patch retroactif `filename` dans result.json cache lors du re-upload | Fait |
+| 5.8 | **Rendu formules LaTeX** | Intégration MathJax ou KaTeX sur le HTML Docling (formules natives, pas seulement placeholders) | Fait |
+| 5.9 | **Table of contents flottante** | Mini TOC sur le côté du Reader HTML (comme ArXiv Vanity) | Fait |

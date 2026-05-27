@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Viewer — Backlog Dashboard</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --or:     #e07800;
+    --or-bg:  #fff8ef;
+    --or-bd:  #f0c070;
+    --bl:     #0055a4;
+    --bl-bg:  #e8f0fb;
+    --gn:     #1a7a2a;
+    --gn-bg:  #edfaed;
+    --gn-bd:  #a8d8a8;
+    --rd:     #c0392b;
+    --rd-bg:  #fdecea;
+    --gy:     #6a6a6a;
+    --gy-bg:  #f0eeeb;
+
+    --bg:     #f4f4f2;
+    --bg2:    #ffffff;
+    --bg3:    #f0eeeb;
+    --tx:     #1a1a1a;
+    --tx2:    #3a3a3a;
+    --tx3:    #6a6a6a;
+    --tx4:    #999999;
+    --bd:     #e0ddd8;
+    --bd2:    #ccc9c4;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:  #111110; --bg2: #1c1b19; --bg3: #242320;
+      --tx:  #e8e4d8; --tx2: #b0aa9a; --tx3: #7a7060; --tx4: #4a4540;
+      --bd:  #2e2c28; --bd2: #3e3c38;
+      --or:  #f09030; --or-bg: #1e1200; --or-bd: #7a4400;
+      --bl:  #5090d8; --bl-bg: #081428;
+      --gn:  #50b050; --gn-bg: #081208; --gn-bd: #1a4a1a;
+      --rd:  #e05040; --rd-bg: #200808;
+      --gy:  #8a8070; --gy-bg: #1a1918;
+    }
+  }
+
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--tx);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--bg2);
+    border-bottom: 3px solid var(--or);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .header-title h1 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--tx);
+    letter-spacing: -.01em;
+  }
+
+  .header-title span {
+    font-size: 11px;
+    color: var(--tx4);
+    font-weight: 400;
+  }
+
+  .header-badge {
+    background: var(--or);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .header-meta {
+    font-size: 11px;
+    color: var(--tx4);
+  }
+
+  /* ── Summary cards ── */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 20px 24px 0;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .scard {
+    background: var(--bg2);
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+
+  .scard-num {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .scard-label {
+    font-size: 11px;
+    color: var(--tx3);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  .scard--done .scard-num  { color: var(--gn); }
+  .scard--prog .scard-num  { color: var(--or); }
+  .scard--todo .scard-num  { color: var(--tx3); }
+  .scard--total .scard-num { color: var(--bl); }
+
+  /* ── Next steps ── */
+  .next-steps {
+    max-width: 1100px;
+    margin: 16px auto 0;
+    padding: 0 24px;
+  }
+
+  .next-steps-card {
+    background: var(--or-bg);
+    border: 1px solid var(--or-bd);
+    border-left: 4px solid var(--or);
+    border-radius: 6px;
+    padding: 14px 18px;
+  }
+
+  .next-steps-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--or);
+    margin-bottom: 10px;
+  }
+
+  .next-steps ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .next-steps li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--tx2);
+  }
+
+  .next-steps li::before {
+    content: "→";
+    color: var(--or);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ── Tab nav ── */
+  .tabs-nav {
+    display: flex;
+    gap: 0;
+    padding: 20px 24px 0;
+    max-width: 1100px;
+    margin: 0 auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-btn {
+    background: var(--bg3);
+    border: 1px solid var(--bd);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--tx3);
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 3px;
+    transition: all .12s;
+    font-family: inherit;
+  }
+
+  .tab-btn:hover { color: var(--or); background: var(--or-bg); }
+
+  .tab-btn.is-active {
+    background: var(--bg2);
+    color: var(--tx);
+    font-weight: 600;
+    border-color: var(--bd2);
+    position: relative;
+  }
+
+  .tab-btn.is-active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--bg2);
+  }
+
+  .tab-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Tab panels ── */
+  .tabs-content {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 40px;
+  }
+
+  .tab-panel {
+    display: none;
+    background: var(--bg2);
+    border: 1px solid var(--bd2);
+    border-radius: 0 6px 6px 6px;
+    overflow: hidden;
+  }
+
+  .tab-panel.is-active { display: block; }
+
+  /* Phase header */
+  .phase-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--bd);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .phase-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tx);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .phase-subtitle {
+    font-size: 12px;
+    color: var(--tx3);
+    font-weight: 400;
+  }
+
+  .phase-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .progress-bar {
+    width: 140px;
+    height: 7px;
+    background: var(--bg3);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .3s;
+  }
+
+  .progress-fill--done { background: var(--gn); }
+  .progress-fill--part { background: var(--or); }
+
+  .progress-pct {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tx3);
+    min-width: 34px;
+    text-align: right;
+  }
+
+  /* Epic table */
+  .epic-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .epic-table th {
+    background: var(--bg3);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--tx4);
+    padding: 8px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--bd);
+    white-space: nowrap;
+  }
+
+  .epic-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--bd);
+    vertical-align: top;
+    font-size: 13px;
+    color: var(--tx2);
+  }
+
+  .epic-table tr:last-child td { border-bottom: none; }
+  .epic-table tr:hover td { background: var(--bg3); }
+
+  .epic-id {
+    font-family: Consolas, monospace;
+    font-size: 11.5px;
+    color: var(--tx4);
+    white-space: nowrap;
+  }
+
+  .epic-name {
+    font-weight: 600;
+    color: var(--tx);
+  }
+
+  .epic-tasks {
+    font-size: 12px;
+    color: var(--tx3);
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+
+  /* Status badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 12px;
+    white-space: nowrap;
+    letter-spacing: .02em;
+  }
+
+  .badge--done { background: var(--gn-bg); color: var(--gn); border: 1px solid var(--gn-bd); }
+  .badge--prog { background: var(--or-bg); color: var(--or); border: 1px solid var(--or-bd); }
+  .badge--todo { background: var(--gy-bg); color: var(--gy); border: 1px solid var(--bd); }
+  .badge--part { background: var(--bl-bg); color: var(--bl); border: 1px solid #b8d0ee; }
+
+  /* Phase note */
+  .phase-note {
+    padding: 10px 20px;
+    font-size: 12px;
+    color: var(--tx3);
+    background: var(--bg3);
+    border-top: 1px solid var(--bd);
+    font-style: italic;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    padding: 24px;
+    font-size: 11px;
+    color: var(--tx4);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .header { padding: 12px 16px; }
+    .summary { padding: 16px 16px 0; }
+    .next-steps, .tabs-nav, .tabs-content { padding-left: 16px; padding-right: 16px; }
+    .epic-table th:nth-child(3), .epic-table td:nth-child(3) { display: none; }
+    .progress-bar { width: 90px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="header">
+  <div class="header-title">
+    <h1>📄 PDF Viewer</h1>
+    <span>Backlog Dashboard</span>
+    <span class="header-badge">EN COURS</span>
+  </div>
+  <div class="header-meta">Dernière MAJ : 2026-05-20 &nbsp;·&nbsp; 6 phases &nbsp;·&nbsp; Source : BACKLOG.md</div>
+</header>
+
+<!-- ── SUMMARY CARDS ── -->
+<div class="summary">
+  <div class="scard scard--total">
+    <div class="scard-num">41</div>
+    <div class="scard-label">Epics total</div>
+  </div>
+  <div class="scard scard--done">
+    <div class="scard-num">34</div>
+    <div class="scard-label">Terminées</div>
+  </div>
+  <div class="scard scard--prog">
+    <div class="scard-num">5</div>
+    <div class="scard-label">En cours / partiel</div>
+  </div>
+  <div class="scard scard--todo">
+    <div class="scard-num">7</div>
+    <div class="scard-label">À faire</div>
+  </div>
+  <div class="scard scard--total" style="border-color: var(--gn);">
+    <div class="scard-num" style="color:var(--gn);">83%</div>
+    <div class="scard-label">Progression</div>
+  </div>
+</div>
+
+<!-- ── NEXT STEPS ── -->
+<div class="next-steps">
+  <div class="next-steps-card">
+    <div class="next-steps-title">⚡ Prochaines actions prioritaires</div>
+    <ul>
+      <li><strong>5.8</strong> — Intégration MathJax/KaTeX pour le rendu des formules LaTeX dans le Reader HTML</li>
+      <li><strong>5.9</strong> — Table of contents flottante côté Reader (comme ArXiv Vanity)</li>
+      <li><strong>4.1</strong> — Onglet Tables : affichage HTML des tableaux extraits par Docling (TableFormer)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── TABS ── -->
+<div class="tabs-nav">
+  <button class="tab-btn is-active" onclick="showTab('p0',this)">
+    <span class="tab-dot" style="background:var(--gn)"></span> Phase 0
+  </button>
+  <button class="tab-btn" onclick="showTab('p1',this)">
+    <span class="tab-dot" style="background:var(--gn)"></span> Phase 1
+  </button>
+  <button class="tab-btn" onclick="showTab('p2',this)">
+    <span class="tab-dot" style="background:var(--gn)"></span> Phase 2
+  </button>
+  <button class="tab-btn" onclick="showTab('p3',this)">
+    <span class="tab-dot" style="background:var(--gn)"></span> Phase 3
+  </button>
+  <button class="tab-btn" onclick="showTab('p4',this)">
+    <span class="tab-dot" style="background:var(--or)"></span> Phase 4
+  </button>
+  <button class="tab-btn" onclick="showTab('p5',this)">
+    <span class="tab-dot" style="background:var(--or)"></span> Phase 5
+  </button>
+</div>
+
+<div class="tabs-content">
+
+  <!-- PHASE 0 -->
+  <div id="p0" class="tab-panel is-active">
+    <div class="phase-header">
+      <div class="phase-title">Phase 0 — Cadrage et scaffolding <span class="phase-subtitle">Terminée</span></div>
+      <div class="phase-progress">
+        <div class="progress-bar"><div class="progress-fill progress-fill--done" style="width:100%"></div></div>
+        <span class="progress-pct">100%</span>
+      </div>
+    </div>
+    <table class="epic-table">
+      <thead><tr><th>ID</th><th>Epic</th><th>Tâches</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="epic-id">0.1</td><td><div class="epic-name">Cadrage</div><div class="epic-tasks">Claude.ai → choix Docling + FastAPI + React/Vite</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">0.2</td><td><div class="epic-name">DRAFT initial</div><div class="epic-tasks">Synthèse conversation cadrage</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">0.3</td><td><div class="epic-name">Méthodologie projet</div><div class="epic-tasks">CLAUDE, SPEC, BACKLOG, PROGRESS, TESTS, /update-progress</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">0.4</td><td><div class="epic-name">Init structure</div><div class="epic-tasks">backend / frontend / samples</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">0.5</td><td><div class="epic-name">Backend venv + deps</div><div class="epic-tasks">Python 3.13, FastAPI, Docling 2.92</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">0.6</td><td><div class="epic-name">Frontend scaffold</div><div class="epic-tasks">Vite + React + TS + react-pdf + pdfjs-dist</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHASE 1 -->
+  <div id="p1" class="tab-panel">
+    <div class="phase-header">
+      <div class="phase-title">Phase 1 — POC backend <span class="phase-subtitle">Terminée 2026-05-04</span></div>
+      <div class="phase-progress">
+        <div class="progress-bar"><div class="progress-fill progress-fill--done" style="width:100%"></div></div>
+        <span class="progress-pct">100%</span>
+      </div>
+    </div>
+    <table class="epic-table">
+      <thead><tr><th>ID</th><th>Epic</th><th>Tâches</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="epic-id">1.1</td><td><div class="epic-name">Squelette FastAPI</div><div class="epic-tasks">/process, /outline, /figure, /raw, /pdf, CORS</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">1.2</td><td><div class="epic-name">Wrapper pipeline.py</div><div class="epic-tasks">convertir_pdf : Docling → outline + figures + bbox</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">1.3</td><td><div class="epic-name">Smoke test</div><div class="epic-tasks">12 pages, 33 sections, 2 figures extraites</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">1.4</td><td><div class="epic-name">Hiérarchie outline</div><div class="epic-tasks">Reconstruction depuis numérotation (2.1 enfant de 2)</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">1.5</td><td><div class="epic-name">Robustesse /process</div><div class="epic-tasks">Limite 100 Mo, check %PDF, try/except, nettoyage cache</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">1.6</td><td><div class="epic-name">Test PDFs variés</div><div class="epic-tasks">5 PDFs : papers EN, doc HSE, CV FR, DMT FR</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+      </tbody>
+    </table>
+    <div class="phase-note">📄 Détail : PHASE1_IMPLEMENT.md</div>
+  </div>
+
+  <!-- PHASE 2 -->
+  <div id="p2" class="tab-panel">
+    <div class="phase-header">
+      <div class="phase-title">Phase 2 — POC frontend <span class="phase-subtitle">Terminée 2026-05-05</span></div>
+      <div class="phase-progress">
+        <div class="progress-bar"><div class="progress-fill progress-fill--done" style="width:100%"></div></div>
+        <span class="progress-pct">100%</span>
+      </div>
+    </div>
+    <table class="epic-table">
+      <thead><tr><th>ID</th><th>Epic</th><th>Tâches</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="epic-id">2.1</td><td><div class="epic-name">App shell</div><div class="epic-tasks">Layout 2 colonnes, sidebar + viewer, upload zone</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">2.2</td><td><div class="epic-name">API client</div><div class="epic-tasks">src/api.ts, POST /process, types TS, ApiError</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">2.3</td><td><div class="epic-name">Component Outline</div><div class="epic-tasks">Arbre récursif, expand/collapse, état vide</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">2.4</td><td><div class="epic-name">Component Viewer</div><div class="epic-tasks">react-pdf Document + Page, scroll multi-page</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">2.5</td><td><div class="epic-name">Clic outline → scroll</div><div class="epic-tasks">forwardRef + scrollToPage via scrollIntoView</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">2.6</td><td><div class="epic-name">Loading + error states</div><div class="epic-tasks">LoadingDocling, erreurs HTTP [code] msg</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">2.7</td><td><div class="epic-name">Build + lint</div><div class="epic-tasks">npm run build + lint propres</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+      </tbody>
+    </table>
+    <div class="phase-note">📄 Détail : PHASE2_IMPLEMENT.md</div>
+  </div>
+
+  <!-- PHASE 3 -->
+  <div id="p3" class="tab-panel">
+    <div class="phase-header">
+      <div class="phase-title">Phase 3 — Sync bidirectionnelle + figures <span class="phase-subtitle">Terminée 2026-05-05</span></div>
+      <div class="phase-progress">
+        <div class="progress-bar"><div class="progress-fill progress-fill--done" style="width:100%"></div></div>
+        <span class="progress-pct">100%</span>
+      </div>
+    </div>
+    <table class="epic-table">
+      <thead><tr><th>ID</th><th>Epic</th><th>Tâches</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="epic-id">3.1</td><td><div class="epic-name">Scroll → highlight outline</div><div class="epic-tasks">IntersectionObserver + flattenOutline + auto-scroll sidebar</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">3.2</td><td><div class="epic-name">FigureOverlay</div><div class="epic-tasks">Modal HD + nav prev/next + Escape + Aller à la page</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">3.3</td><td><div class="epic-name">Markers figures</div><div class="epic-tasks">Overlay boutons en CSS %, conversion bbox via bbox.ts</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">3.4</td><td><div class="epic-name">Navigation clavier</div><div class="epic-tasks">↑/↓ outline, ←/→ overlay, Escape ferme</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">3.5</td><td><div class="epic-name">Persistance localStorage</div><div class="epic-tasks">1 doc actif via lastDocId — liste récents reportée</div></td><td>—</td><td><span class="badge badge--part">🔵 Partiel</span></td></tr>
+        <tr><td class="epic-id">3.6</td><td><div class="epic-name">Vue Galerie figures</div><div class="epic-tasks">Tabs Sommaire/Galerie, grille thumbnails, FigureOverlay</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+      </tbody>
+    </table>
+    <div class="phase-note">📄 Détail : PHASE3_IMPLEMENT.md &nbsp;·&nbsp; 🎁 Bonus : mobile-friendly (drawer, hamburger, 100dvh)</div>
+  </div>
+
+  <!-- PHASE 4 -->
+  <div id="p4" class="tab-panel">
+    <div class="phase-header">
+      <div class="phase-title">Phase 4 — Polish + robustesse <span class="phase-subtitle">En cours</span></div>
+      <div class="phase-progress">
+        <div class="progress-bar"><div class="progress-fill progress-fill--part" style="width:57%"></div></div>
+        <span class="progress-pct">57%</span>
+      </div>
+    </div>
+    <table class="epic-table">
+      <thead><tr><th>ID</th><th>Epic</th><th>Tâches</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="epic-id">4.1</td><td><div class="epic-name">Tables structurées</div><div class="epic-tasks">Affichage table extraite par Docling (TableFormer)</div></td><td>—</td><td><span class="badge badge--todo">⬜ À faire</span></td></tr>
+        <tr><td class="epic-id">4.2</td><td><div class="epic-name">Recherche dans le PDF</div><div class="epic-tasks">SearchBar + highlight via customTextRenderer (react-pdf)</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">4.3</td><td><div class="epic-name">Export Markdown</div><div class="epic-tasks">result.md + GET /markdown + bouton .md frontend</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">4.4</td><td><div class="epic-name">Mode sombre</div><div class="epic-tasks">Toggle thème clair/sombre (intégré dans Reader)</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">4.5</td><td><div class="epic-name">Performance</div><div class="epic-tasks">Virtualisation pages, code-splitting bundle JS</div></td><td>—</td><td><span class="badge badge--todo">⬜ À faire</span></td></tr>
+        <tr><td class="epic-id">4.6</td><td><div class="epic-name">Tests unitaires backend</div><div class="epic-tasks">pytest sur pipeline.py (snapshots result.json)</div></td><td>—</td><td><span class="badge badge--todo">⬜ À faire</span></td></tr>
+        <tr><td class="epic-id">4.7</td><td><div class="epic-name">Doc utilisateur</div><div class="epic-tasks">README + requirements.txt + .gitignore</div></td><td>—</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHASE 5 -->
+  <div id="p5" class="tab-panel">
+    <div class="phase-header">
+      <div class="phase-title">Phase 5 — Reader "Interactive Book" <span class="phase-subtitle">En cours</span></div>
+      <div class="phase-progress">
+        <div class="progress-bar"><div class="progress-fill progress-fill--part" style="width:78%"></div></div>
+        <span class="progress-pct">78%</span>
+      </div>
+    </div>
+    <table class="epic-table">
+      <thead><tr><th>ID</th><th>Epic</th><th>Tâches</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="epic-id">5.1</td><td><div class="epic-name">Export HTML Docling</div><div class="epic-tasks">ImageRefMode.EMBEDDED + GET /html + _merge_pdf_lines()</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">5.2</td><td><div class="epic-name">Refonte Reader</div><div class="epic-tasks">Source Serif 4, orange accent, dark mode, typography popup</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">5.3</td><td><div class="epic-name">Navigation focus mode</div><div class="epic-tasks">Clic sidebar → section unique + prev/next + retour</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">5.4</td><td><div class="epic-name">Figures pleine résolution</div><div class="epic-tasks">margin: -44px, max-width: none, strip attrs Docling</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">5.5</td><td><div class="epic-name">Formules formula-not-decoded</div><div class="epic-tasks">CSS div/span + LEAF_DIV_CLASSES dans sectionizeHtml</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">5.6</td><td><div class="epic-name">Fix PDF viewer worker</div><div class="epic-tasks">CDN unpkg au lieu de Vite ?url import</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr><td class="epic-id">5.7</td><td><div class="epic-name">Fix nom de fichier</div><div class="epic-tasks">Patch rétroactif filename dans result.json cache</div></td><td>2026-05-20</td><td><span class="badge badge--done">✅ Fait</span></td></tr>
+        <tr style="background: var(--or-bg)"><td class="epic-id">5.8</td><td><div class="epic-name">Rendu formules LaTeX</div><div class="epic-tasks">MathJax ou KaTeX dans le Reader HTML (formules natives)</div></td><td>—</td><td><span class="badge badge--todo">⬜ À faire</span></td></tr>
+        <tr style="background: var(--or-bg)"><td class="epic-id">5.9</td><td><div class="epic-name">Table of contents flottante</div><div class="epic-tasks">Mini TOC latérale dans le Reader (style ArXiv Vanity)</div></td><td>—</td><td><span class="badge badge--todo">⬜ À faire</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /tabs-content -->
+
+<div class="footer">
+  Généré depuis <code>BACKLOG.md</code> · pdf-viewer · 2026-05-20
+</div>
+
+<script>
+  function showTab(id, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('is-active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('is-active'));
+    document.getElementById(id).classList.add('is-active');
+    btn.classList.add('is-active');
+  }
+</script>
+</body>
+</html>

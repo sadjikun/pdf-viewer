@@ -2,14 +2,16 @@
   list-style: none;
   padding: 0;
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
+  font-family: var(--font-ui);
 }
 
 .outline-children {
   list-style: none;
-  padding-left: 1rem;
-  margin: 0;
-  border-left: 1px solid var(--border, #2a2d36);
+  padding-left: 0.9rem;
+  margin: 2px 0 2px 0.55rem;
+  border-left: 1.5px solid var(--border-glass);
+  transition: all 0.2s ease;
 }
 
 .outline-item {
@@ -18,40 +20,70 @@
 
 .outline-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.25rem;
-  border-radius: 4px;
-  padding: 2px 4px;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
 }
 
 .outline-row.is-active {
-  background: var(--active-bg, #2a3a5e);
+  background: var(--or-bg, rgba(99, 102, 241, 0.12));
+  border-color: var(--border-glass-active);
+  color: var(--text-primary);
+  border-left-color: var(--or, #7c3aed);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  box-shadow: inset 0 0 8px rgba(99, 102, 241, 0.05);
 }
 
-.outline-row:hover {
-  background: var(--row-hover, #20232a);
+.outline-row:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
 }
 
 .outline-toggle {
   background: none;
   border: none;
-  color: inherit;
+  color: var(--text-secondary);
   cursor: pointer;
-  width: 1rem;
-  font-size: 0.75rem;
+  width: 1.2rem;
+  height: 1.2rem;
   padding: 0;
   flex-shrink: 0;
-  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.outline-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
 .outline-toggle-empty {
   cursor: default;
 }
 
+.outline-chevron {
+  width: 0.7rem;
+  height: 0.7rem;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: block;
+}
+
+.outline-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
 .outline-title {
   background: none;
   border: none;
-  color: inherit;
+  color: var(--text-secondary);
   cursor: pointer;
   text-align: left;
   flex: 1;
@@ -59,23 +91,91 @@
   font: inherit;
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 0.5rem;
   min-width: 0;
+  transition: color 0.15s ease;
+}
+
+.outline-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.outline-row.is-active .outline-title {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .outline-title:hover {
-  text-decoration: underline;
+  color: var(--text-primary);
+  text-decoration: none;
 }
 
 .outline-page {
-  color: var(--muted, #8a8f99);
-  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
   flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-weight: 500;
+}
+
+/* Specific levels styling */
+.outline-item-l1 > .outline-row > .outline-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.outline-item-l1 > .outline-row {
+  margin-top: 4px;
+}
+
+.outline-item-l2 > .outline-row > .outline-title {
+  font-weight: 500;
+  font-size: 0.82rem;
+}
+
+.outline-item-l3 > .outline-row > .outline-title {
+  font-weight: 400;
+  font-size: 0.78rem;
 }
 
 .outline-empty {
-  color: var(--muted, #8a8f99);
+  color: var(--text-muted);
   font-style: italic;
-  font-size: 0.875rem;
-  padding: 0.5rem;
+  font-size: 0.82rem;
+  padding: 0.75rem 0.5rem;
 }
+
+/* Thème CSTB : élément actif en orange solide avec texte blanc */
+.theme-cstb .outline-row.is-active {
+  background: #ff8c00 !important;
+  border-color: #ff8c00 !important;
+  border-left-color: #ff8c00 !important;
+  box-shadow: none !important;
+}
+
+.theme-cstb .outline-row.is-active .outline-title,
+.theme-cstb .outline-row.is-active .outline-text,
+.theme-cstb .outline-row.is-active .outline-page,
+.theme-cstb .outline-row.is-active .outline-toggle {
+  color: #ffffff !important;
+}
+
+.theme-cstb .outline-row.is-active:hover {
+  background: #e07b00 !important;
+}
+
+/* Thème CSTB Sombre : élément actif en orange plus doux */
+.theme-cstb.reader--dark .outline-row.is-active {
+  background: #ffa726 !important;
+  border-color: #ffa726 !important;
+  border-left-color: #ffa726 !important;
+}
+
+.theme-cstb.reader--dark .outline-row.is-active:hover {
+  background: #fb8c00 !important;
+}
+
+

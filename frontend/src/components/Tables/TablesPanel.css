@@ -1,0 +1,120 @@
+.tables-empty {
+  padding: 1.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted, #8a8f99);
+  text-align: center;
+}
+
+.tables-empty-hint {
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  color: var(--muted, #8a8f99);
+  opacity: 0.7;
+}
+
+.tables-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.25rem 0;
+}
+
+/* ── Carte table ── */
+.tables-item {
+  border: 1px solid var(--border, #2a2d36);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tables-item-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0.45rem 0.65rem;
+  background: #1a1c22;
+  border-bottom: 1px solid var(--border, #2a2d36);
+}
+
+.tables-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--muted, #8a8f99);
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+
+.tables-item-page {
+  background: none;
+  border: 1px solid var(--border, #2a2d36);
+  color: #5e9bff;
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+  line-height: 1.6;
+}
+
+.tables-item-page:hover {
+  background: #1e2a40;
+}
+
+.tables-item-caption {
+  font-size: 0.75rem;
+  color: var(--muted, #8a8f99);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tables-item-nohtml {
+  padding: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted, #8a8f99);
+  margin: 0;
+}
+
+/* ── Rendu HTML de la table Docling ── */
+.tables-item-html {
+  overflow-x: auto;
+  padding: 0.5rem 0.65rem;
+  background: #0e1014;
+}
+
+.tables-item-html table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.78rem;
+  color: #e6e8ec;
+  min-width: 200px;
+}
+
+.tables-item-html th {
+  background: #1a1c22;
+  color: #c8ccd4;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.35em 0.7em;
+  border-bottom: 1px solid #3a3d46;
+  white-space: nowrap;
+}
+
+.tables-item-html td {
+  padding: 0.3em 0.7em;
+  border-bottom: 1px solid #22252e;
+  color: #c8ccd4;
+  vertical-align: top;
+}
+
+.tables-item-html tr:last-child td {
+  border-bottom: none;
+}
+
+.tables-item-html tr:nth-child(even) td {
+  background: #13151a;
+}
+
+.tables-item-html tr:hover td {
+  background: #1a1c22;
+}

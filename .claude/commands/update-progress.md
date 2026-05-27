@@ -122,6 +122,15 @@ Apres ecriture, affiche : **"Suivi mis a jour. N fichiers modifies."**
 
 ---
 
+## Etape 9 — Regenerer le dashboard HTML (optionnel)
+
+Après avoir écrit les fichiers Markdown, proposer :
+**"Voulez-vous aussi régénérer le dashboard HTML (`docs/artifacts/backlog-dashboard.html`) ?"**
+
+Si oui : lire le BACKLOG.md mis à jour et re-générer le fichier HTML avec les nouveaux statuts (badges, barres de progression, prochaines actions). Le fichier doit rester auto-contenu (zéro dépendance externe, CSS inline).
+
+---
+
 ## Regles
 
 - **Ne jamais ecrire sans validation** de l'utilisateur

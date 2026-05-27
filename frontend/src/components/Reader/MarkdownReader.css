@@ -1,0 +1,2352 @@
+/* ═══════════════════════════════════════════════════════════════
+   Interactive Book Reader — Glassmorphism Premium Edition
+   Fonts: Open Sans (UI) · Source Serif 4 (body) · JetBrains Mono
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── CSS Variables ──────────────────────────────────────────── */
+.reader {
+  /* Light theme, with fallbacks to global layout theme variables */
+  --bg:     var(--bg-app, #fafafa);
+  --bg2:    var(--bg-card, #ffffff);
+  --bg3:    var(--bg-popover, #f3f4f6);
+  --sbg:    var(--bg-sidebar, #f9fafb);
+
+  --tx:     var(--text-primary, #171717);
+  --tx2:    var(--text-primary, #404040);
+  --tx3:    var(--text-secondary, #737373);
+  --tx4:    var(--text-muted, #a3a3a3);
+
+  --bd:     var(--border-glass, #e5e7eb);
+  --bd2:    var(--border-glass-active, #d1d5db);
+
+  --or:     var(--accent-color, #7c3aed);
+  --or-bg:  var(--bg-popover, rgba(124, 58, 237, 0.05));
+  --or-bd:  var(--border-glass, rgba(124, 58, 237, 0.18));
+  --bl:     var(--accent-cyan, #0891b2);
+  --bl-bg:  var(--bg-popover, rgba(8, 145, 178, 0.05));
+  --bl-bd:  var(--border-glass, rgba(8, 145, 178, 0.18));
+  --gn:     var(--accent-cyan, #059669);
+  --gn-bg:  var(--bg-popover, rgba(5, 150, 105, 0.05));
+  --rd:     #dc2626;
+
+  --fu:  var(--font-ui, 'Outfit', system-ui, sans-serif);
+  /* --fb : police lecture longue (mode Serif) */
+  --fb:  'Lora', 'Source Serif 4', Georgia, serif;
+  --fm:  var(--font-mono, 'JetBrains Mono', 'Consolas', monospace);
+  /* --fd : police document (mode Document, défaut) — Calibri = le plus courant dans les PDFs Windows */
+  --fd:  'Calibri', 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+
+  --max-w: 860px;         /* Largeur de lecture confortable, centrée */
+  /* F6.1 : couleur du "bureau" sous les pages — doit correspondre à .reader-content background */
+  --desk:  #dfe0e2;
+  --fs:    16px;
+  --lh:    1.85;
+
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--fu);
+  font-size: var(--fs);
+  line-height: var(--lh);
+  transition: background .3s ease, color .3s ease;
+}
+
+/* Dark theme overrides, with fallbacks to global layout theme variables */
+.reader--dark {
+  --bg:    var(--bg-app, #0a0b10);
+  --bg2:   var(--bg-card, #12131a);
+  --bg3:   var(--bg-popover, #181a24);
+  --sbg:   var(--bg-sidebar, #0f1016);
+  --tx:    var(--text-primary, #f3f4f6);
+  --tx2:   var(--text-primary, #d1d5db);
+  --tx3:   var(--text-secondary, #9ca3af);
+  --tx4:   var(--text-muted, #6b7280);
+  --bd:    var(--border-glass, rgba(255, 255, 255, 0.08));
+  --bd2:   var(--border-glass-active, rgba(255, 255, 255, 0.16));
+  --or:    var(--accent-color, #a78bfa);
+  --or-bg: var(--bg-popover, rgba(167, 139, 250, 0.06));
+  --or-bd: var(--border-glass, rgba(167, 139, 250, 0.22));
+  --bl:    var(--accent-cyan, #22d3ee);
+  --bl-bg: var(--bg-popover, rgba(34, 211, 238, 0.06));
+  --bl-bd: var(--border-glass, rgba(34, 211, 238, 0.22));
+  --gn:    var(--accent-cyan, #34d399);
+  --gn-bg: var(--bg-popover, rgba(52, 211, 153, 0.06));
+  --rd:    #f87171;
+  --desk:  #111115;             /* F6.1 dark : bureau sombre */
+}
+
+/* ── App theme mappings — Reader inherits app palette (FIX) ──── */
+/* glassmorphism / Clair : violet, fond blanc doux */
+.reader--app-glassmorphism,
+.reader--app-minimalist {
+  --or:    #7c3aed; --or-bg: rgba(124,58,237,.06); --or-bd: rgba(124,58,237,.2);
+}
+/* technical / Tech : bleu électrique, fond sombre */
+.reader--app-technical {
+  --bg: #0e1117; --bg2: #161b27; --bg3: #1e2535;
+  --tx: #e2e8f0; --tx2: #cbd5e1; --tx3: #94a3b8;
+  --bd: rgba(255,255,255,.08); --bd2: rgba(255,255,255,.14);
+  --or: #38bdf8; --or-bg: rgba(56,189,248,.07); --or-bd: rgba(56,189,248,.22);
+}
+/* vintage / Sépia : ton papier chaud */
+.reader--app-vintage {
+  --bg: #f5f0e8; --bg2: #faf7f2; --bg3: #eee9dc;
+  --tx: #3b2f1e; --tx2: #5c4a32; --tx3: #8a7060;
+  --bd: #d4c5a9; --bd2: #c0ae8d;
+  --or: #b45309; --or-bg: rgba(180,83,9,.07); --or-bd: rgba(180,83,9,.2);
+  --fb: 'Lora', Georgia, serif;
+}
+/* oled : noir pur, accent orange */
+.reader--app-oled {
+  --bg: #000000; --bg2: #0a0a0a; --bg3: #111111;
+  --tx: #f5f5f5; --tx2: #d4d4d4; --tx3: #a3a3a3;
+  --bd: rgba(255,255,255,.06); --bd2: rgba(255,255,255,.12);
+  --or: #f97316; --or-bg: rgba(249,115,22,.07); --or-bd: rgba(249,115,22,.2);
+}
+/* forest / Forêt : vert profond */
+.reader--app-forest {
+  --bg: #0d1f0f; --bg2: #162618; --bg3: #1e3320;
+  --tx: #d1fae5; --tx2: #a7f3d0; --tx3: #6ee7b7;
+  --bd: rgba(110,231,183,.1); --bd2: rgba(110,231,183,.18);
+  --or: #34d399; --or-bg: rgba(52,211,153,.07); --or-bd: rgba(52,211,153,.2);
+}
+
+/* Font size overrides */
+.reader--fs-sm  { --fs: 14px; }
+.reader--fs-md  { --fs: 16px; }
+.reader--fs-lg  { --fs: 18px; }
+.reader--fs-xl  { --fs: 20px; }
+.reader--fs-xxl { --fs: 24px; }
+
+/* Font family — mode "sans" = police document (Calibri/Segoe UI, style PDF) */
+.reader--serif .reader-doc p,
+.reader--serif .reader-doc li,
+.reader--serif .reader-doc td,
+.reader--serif .reader-doc th { font-family: var(--fb); }
+.reader--sans .reader-doc p,
+.reader--sans .reader-doc li,
+.reader--sans .reader-doc td,
+.reader--sans .reader-doc th  { font-family: var(--fd); }
+/* Paragraphes sans classe explicite : police document par défaut */
+.reader-doc p,
+.reader-doc li,
+.reader-doc td,
+.reader-doc th { font-family: var(--fd); }
+
+/* Line height */
+.reader--lh-compact .reader-doc p { line-height: 1.6;  }
+.reader--lh-normal  .reader-doc p { line-height: 1.85; }
+.reader--lh-relaxed .reader-doc p { line-height: 2.2;  }
+
+/* ── Progress bar ───────────────────────────────────────────── */
+.reader-progress {
+  position: absolute;
+  top: 0; left: 0;
+  height: 3.5px;
+  background: linear-gradient(90deg, var(--or), var(--bl), var(--gn));
+  transition: width .12s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 20;
+  pointer-events: none;
+  box-shadow: 0 1px 8px var(--or);
+}
+.reader--dark .reader-progress {
+  box-shadow: 0 1px 12px var(--or);
+}
+
+/* ── Toolbar ────────────────────────────────────────────────── */
+.reader-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 20px;
+  height: 40px;
+  background: color-mix(in srgb, var(--bg2) 75%, transparent);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border-bottom: 1px solid var(--bd);
+  flex-shrink: 0;
+  z-index: 10;
+  box-shadow: 0 4px 20px rgba(0,0,0,.03);
+}
+
+.reader-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reader-toolbar-group--right {
+  gap: 6px;
+}
+
+.reader-toolbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+/* Toolbar buttons */
+.reader-tbtn {
+  font-family: var(--fu);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg3);
+  color: var(--tx2);
+  cursor: pointer;
+  transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1;
+}
+.reader-tbtn:hover,
+.reader-tbtn.is-on {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+  transform: translateY(-1px);
+}
+
+/* Segmented: Structuré / Markdown */
+.reader-segmented {
+  display: flex;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  overflow: hidden;
+  gap: 0;
+  padding: 2px;
+}
+.reader-seg-btn {
+  background: none;
+  border: none;
+  color: var(--tx3);
+  font-size: 11.5px;
+  font-family: var(--fu);
+  font-weight: 600;
+  padding: 4px 14px;
+  border-radius: 15px;
+  cursor: pointer;
+  transition: all .2s ease;
+  white-space: nowrap;
+}
+.reader-seg-btn:hover {
+  color: var(--tx);
+}
+.reader-seg-btn.is-on {
+  background: var(--or);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+}
+
+/* Pill meta */
+.reader-meta-pill {
+  font-size: 11px;
+  color: var(--tx3);
+  font-family: var(--fu);
+  font-weight: 600;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  padding: 3px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.reader-meta-pill--focus {
+  background: var(--or-bg);
+  color: var(--or);
+  border-color: var(--or-bd);
+}
+
+/* ── Stats bar ──────────────────────────────────────────────── */
+.reader-stats {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 2px 16px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--bd);
+  font-family: var(--fu);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--tx3);
+  flex-shrink: 0;
+}
+.reader-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ── Font size popup ────────────────────────────────────────── */
+.reader-tbtn-wrap {
+  position: relative;
+}
+.reader-tool-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 210px;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.15);
+  z-index: 600;
+  padding: 14px;
+  backdrop-filter: var(--glass-blur);
+}
+.reader-pop-label {
+  font-family: var(--fu);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tx3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 8px;
+}
+
+/* Fs slider */
+.reader-fs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.reader-fs-row input[type=range] {
+  flex: 1;
+  accent-color: var(--or);
+  cursor: pointer;
+}
+
+/* Lh buttons */
+.reader-lh-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.reader-lh-btn {
+  font-size: 16px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg3);
+  color: var(--tx3);
+  cursor: pointer;
+  letter-spacing: 2px;
+  line-height: 1;
+  transition: all .2s ease;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+.reader-lh-btn.is-on,
+.reader-lh-btn:hover {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+}
+
+/* Ff buttons */
+.reader-ff-row {
+  display: flex;
+  gap: 6px;
+}
+.reader-ff-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg3);
+  color: var(--tx3);
+  cursor: pointer;
+  transition: all .2s ease;
+  flex: 1;
+}
+.reader-ff-btn[data-ff=serif] { font-family: var(--fb); font-size: 13px; }
+.reader-ff-btn.is-on,
+.reader-ff-btn:hover {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+}
+
+/* Theme grid inside typography popover */
+.reader-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+.reader-theme-btn {
+  font-family: var(--fu);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg3);
+  color: var(--tx3);
+  cursor: pointer;
+  transition: all .2s ease;
+  text-align: center;
+}
+.reader-theme-btn:hover {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+}
+.reader-theme-btn.is-on {
+  background: var(--or);
+  border-color: var(--or);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.15);
+}
+
+/* ── Content scroll area — fond "bureau" sous le document ── */
+/* FIX-034 : plus de padding latéral → Reader pleine largeur comme le PDF viewer.
+   Le fond bureau gris reste visible ENTRE les pages via .pdf-page-divider-line (F6.1). */
+.reader-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #dfe0e2;      /* bureau clair : couleur de la bande séparatrice entre pages */
+  padding: 20px 16px 40px;  /* bureau visible 20px au-dessus de la carte (F6.1) */
+  scroll-behavior: smooth;
+}
+.reader--dark .reader-content {
+  background: #111115;      /* bureau sombre */
+}
+/* En mode Compare : pas de bureau latéral, pas de padding vertical (cohérence avec le PDF) */
+.reader--compare .reader-content {
+  padding: 0;
+  background: var(--bg);
+}
+.reader--compare .reader-cw {
+  box-shadow: none;
+  background: transparent;
+}
+/* Thèmes colorés : fond bureau + variable --desk (F6.1) pour que le séparateur de pages corresponde */
+.reader--app-oled .reader-content   { background: #050505; }
+.reader--app-oled                   { --desk: #050505; }
+.reader--app-forest .reader-content { background: #0a1a0c; }
+.reader--app-forest                 { --desk: #0a1a0c; }
+.reader--app-technical .reader-content { background: #090d14; }
+.reader--app-technical              { --desk: #090d14; }
+.reader--app-vintage .reader-content   { background: #d9d1c2; }
+.reader--app-vintage                { --desk: #d9d1c2; }
+
+/* ── Carte document centrée, largeur limitée selon le thème ── */
+.reader-cw {
+  max-width: var(--max-w);
+  margin: 0 auto 0;        /* le padding du reader-content gère l'espace vertical */
+  padding: 0;
+  background: #ffffff;
+  box-shadow:
+    0 1px 3px rgba(0,0,0,.10),
+    0 4px 16px rgba(0,0,0,.08),
+    0 12px 40px rgba(0,0,0,.05);
+  border-radius: 0;        /* bords nets comme le PDF */
+  min-height: 200px;
+  overflow-x: clip;   /* F6.1 : laisse le séparateur saigner hors du padding sans scrollbar */
+}
+.reader--dark .reader-cw {
+  background: var(--bg2);
+  box-shadow:
+    0 1px 3px rgba(0,0,0,.35),
+    0 4px 16px rgba(0,0,0,.28),
+    0 12px 40px rgba(0,0,0,.2);
+}
+/* Thèmes colorés */
+.reader--app-vintage .reader-cw {
+  background: #faf7f2;
+}
+.reader--app-oled .reader-cw,
+.reader--app-forest .reader-cw,
+.reader--app-technical .reader-cw {
+  background: var(--bg2);
+}
+
+/* ── Document typography zone (A4 margins inside the card) ── */
+.reader-doc {
+  --doc-px: 72px;               /* F6.1/F6.5 : marge latérale de référence */
+  font-size: var(--fs);
+  line-height: var(--lh);
+  padding: 52px var(--doc-px) 72px;
+}
+
+/* Section scroll margin */
+.reader-doc section[data-sid] {
+  scroll-margin-top: 60px;
+  margin-bottom: 30px;
+}
+
+/* ── Breadcrumb ─────────────────────────────────────────────── */
+.reader-bc {
+  background: color-mix(in srgb, var(--bg2) 80%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--bd);
+  padding: 4px 16px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--fu);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.reader-bc-sep { color: var(--bd2); }
+.reader-bc-cur { color: var(--tx2); font-weight: 700; }
+
+/* ── Focus header ───────────────────────────────────────────── */
+.reader-focus-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--bd);
+  background: color-mix(in srgb, var(--bg2) 90%, transparent);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 24px;
+  z-index: 4;
+}
+
+.reader-back-btn {
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--tx2);
+  font-size: 12.5px;
+  font-family: var(--fu);
+  font-weight: 600;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+.reader-back-btn:hover {
+  background: var(--or-bg);
+  border-color: var(--or);
+  color: var(--or);
+}
+
+.reader-focus-label {
+  font-family: var(--fu);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Inline prev/next nav inside the focus header */
+.reader-focus-nav--inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.reader-focus-nav--inline .reader-nav-btn {
+  padding: 4px 12px;
+  font-size: 14px;
+  min-width: 36px;
+  font-weight: 700;
+  border-radius: 6px;
+}
+.reader-focus-counter {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx3);
+  font-family: var(--fu);
+  min-width: 50px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ── Paper header card ──────────────────────────────────────── */
+.reader-paper-card {
+  margin: 0 0 40px;
+  padding: 28px;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+}
+
+.reader-paper-title {
+  font-family: var(--fu);
+  font-size: 2.1em;
+  font-weight: 800;
+  color: var(--tx);
+  line-height: 1.25;
+  margin: 0 0 12px;
+  letter-spacing: -.02em;
+}
+
+.reader-paper-authors {
+  font-family: var(--fu);
+  font-size: .95em;
+  color: var(--tx3);
+  margin: 0 0 18px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.reader-paper-author { color: var(--or); font-style: normal; font-weight: 600; }
+.reader-paper-sep    { color: var(--tx4); margin: 0 4px; }
+
+.reader-paper-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.reader-bstat {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-family: var(--fu);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx3);
+}
+
+.reader-paper-abstract {
+  background: var(--or-bg);
+  border: 1px solid var(--or-bd);
+  border-left: 4px solid var(--or);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 0 0 20px;
+}
+.reader-paper-abstract-label {
+  display: block;
+  font-family: var(--fu);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--or);
+  margin-bottom: 8px;
+}
+.reader-paper-abstract p {
+  margin: 0;
+  font-family: var(--fb);
+  font-size: .98em;
+  line-height: 1.8;
+  color: var(--tx2);
+  text-align: justify;
+  hyphens: auto;
+}
+
+.reader-paper-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.reader-paper-keyword {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-family: var(--fu);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tx3);
+  transition: all .2s ease;
+  cursor: default;
+}
+.reader-paper-keyword:hover {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+  transform: translateY(-1px);
+}
+
+/* ── PDF page markers — barres en-tête/pied style PDF (FIX-016) ── */
+/* Hidden in reader-only mode; shown only in compare mode (.reader--compare) */
+.pdf-page-marker {
+  display: none;
+}
+.reader--compare .pdf-page-marker {
+  display: block;
+  margin: 52px 0 0;
+  user-select: none;
+  scroll-margin-top: 56px;
+}
+
+/* Pied de page (fin de la page précédente) — ombre "bas de feuille" vers le bureau */
+.pdf-page-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 14px;
+  background: color-mix(in srgb, var(--bg3) 80%, transparent);
+  border: 1px solid var(--bd);
+  border-bottom: none;
+  border-radius: 0;
+  font-family: var(--fu);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--tx4);
+  box-shadow: 0 3px 8px rgba(0,0,0,.06);
+}
+
+/* Bande "bureau" entre pied et en-tête — saigne hors du padding de .reader-doc (F6.1) */
+.pdf-page-divider-line {
+  height: 36px;
+  background: var(--desk);
+  margin: 0 calc(-1 * var(--doc-px));
+  box-shadow:
+    inset 0 5px 12px rgba(0,0,0,.10),
+    inset 0 -5px 12px rgba(0,0,0,.07);
+}
+
+/* En-tête (début de la page courante) — ombre "haut de feuille" depuis le bureau */
+.pdf-page-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: color-mix(in srgb, var(--bg2) 90%, transparent);
+  border: 1px solid var(--bd);
+  border-top: none;
+  border-bottom: 2px solid var(--or);
+  border-radius: 0;
+  font-family: var(--fu);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--tx3);
+  margin-bottom: 24px;
+  box-shadow: 0 -3px 8px rgba(0,0,0,.05);
+}
+
+/* Titre du document dans les barres */
+.pdf-pbb-doc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12px;
+  font-style: italic;
+}
+
+/* Numéro de page */
+.pdf-pbb-pg {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--tx3);
+  font-style: normal;
+}
+
+/* Numéro de la page courante en accent */
+.pdf-pbb-pg--current {
+  color: var(--or);
+  font-size: 11px;
+}
+
+/* ── Page navigation toolbar ── */
+.reader-page-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  padding: 2px 4px;
+}
+.reader-page-btn {
+  padding: 3px 8px !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--tx2) !important;
+  border-radius: 12px !important;
+  transition: background .15s ease;
+}
+.reader-page-btn:hover:not(:disabled) { background: var(--or-bg) !important; color: var(--or) !important; }
+.reader-page-btn:disabled { opacity: 0.3; cursor: default; }
+.reader-page-counter {
+  padding: 3px 10px !important;
+  font-family: var(--fu) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 12px !important;
+  white-space: nowrap;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+}
+.reader-page-counter.is-on { background: var(--or-bg) !important; color: var(--or) !important; }
+.reader-page-total { font-weight: 400; color: var(--tx3); }
+
+/* ── Page mode: scroll-snap, one page at a time ── */
+.reader-content--page-mode {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+}
+.reader-content--page-mode .pdf-page-marker {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  margin-top: 0;
+}
+.reader-content--page-mode .pdf-page-header-bar {
+  background: var(--bg2);
+  border-top: 2px solid var(--or-bd);
+}
+
+/* ── Headings ── */
+.reader-doc h1 {
+  font-family: var(--fu);
+  font-size: 1.5em;
+  font-weight: 800;
+  color: var(--tx);
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--or);
+  line-height: 1.25;
+  letter-spacing: -.02em;
+}
+
+.reader-doc h2 {
+  font-family: var(--fu);
+  font-size: 1.2em;
+  font-weight: 700;
+  color: var(--tx);
+  margin: 36px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--bd);
+  line-height: 1.3;
+  letter-spacing: -.01em;
+}
+
+.reader-doc h3 {
+  font-family: var(--fu);
+  font-size: 1.05em;
+  font-weight: 700;
+  color: var(--tx2);
+  margin: 28px 0 10px;
+  line-height: 1.3;
+}
+
+.reader-doc h4 {
+  font-family: var(--fu);
+  font-size: .95em;
+  font-weight: 700;
+  color: var(--tx2);
+  margin: 24px 0 8px;
+}
+
+/* ── Body text ── */
+.reader-doc p {
+  font-family: var(--fb);
+  font-size: var(--fs);
+  line-height: var(--lh);
+  color: var(--tx);
+  margin: 0 0 16px;
+  text-align: justify;
+  hyphens: auto;
+}
+.reader-doc p:last-child { margin-bottom: 0; }
+
+/* ── Links ── */
+.reader-doc a {
+  color: var(--or);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--or) 30%, transparent);
+  text-underline-offset: 3px;
+  font-weight: 600;
+  transition: text-decoration-color .2s ease;
+}
+.reader-doc a:hover { text-decoration-color: var(--or); }
+
+/* ── Lists — hierarchical bullet system ── */
+/* Level 1 : disc ● large, full text size */
+.reader-doc ul,
+.reader-doc ol {
+  margin: 10px 0 14px 0;
+  padding-left: 1.5em;
+}
+.reader-doc ul { list-style-type: disc; }
+.reader-doc ol { list-style-type: decimal; }
+
+.reader-doc li {
+  margin: 5px 0;
+  line-height: var(--lh);
+  font-family: var(--fb);
+  font-size: 1em;
+  color: var(--tx);
+}
+/* Marker color for level 1 */
+.reader-doc ul > li::marker { color: var(--or); font-size: 1.1em; }
+.reader-doc ol > li::marker { color: var(--or); font-weight: 700; }
+
+/* Level 2 : circle ○ — slightly smaller, indented */
+.reader-doc ul ul,
+.reader-doc ol ul,
+.reader-doc ul ol {
+  list-style-type: circle;
+  margin: 3px 0 4px 0;
+  padding-left: 1.4em;
+}
+.reader-doc ul ul > li,
+.reader-doc ol ul > li {
+  font-size: 0.95em;
+  color: var(--tx2);
+}
+.reader-doc ul ul > li::marker { color: var(--tx3); font-size: 1em; }
+
+/* Level 3 : square ■ — smaller still */
+.reader-doc ul ul ul,
+.reader-doc ol ul ul {
+  list-style-type: square;
+  margin: 2px 0 3px 0;
+  padding-left: 1.3em;
+}
+.reader-doc ul ul ul > li {
+  font-size: 0.9em;
+  color: var(--tx3);
+}
+.reader-doc ul ul ul > li::marker { color: var(--tx3); font-size: 0.85em; }
+
+/* Bold lead items inside a <li> act as visual sub-headings (PDF feature blocks) */
+.reader-doc li > strong:first-child,
+.reader-doc li > p > strong:first-child {
+  display: block;
+  font-weight: 700;
+  color: var(--tx);
+  margin-bottom: 3px;
+}
+/* But not when followed by text in the same inline flow */
+.reader-doc li > strong:first-child:not(:only-child) {
+  display: inline;
+}
+
+/* ── Inline ── */
+.reader-doc strong { font-weight: 700; color: var(--tx); }
+.reader-doc em     { font-style: italic; }
+.reader-doc sup    { font-size: .75em; vertical-align: super; }
+.reader-doc sub    { font-size: .75em; vertical-align: sub;   }
+
+/* ── Figures ── */
+.reader-doc figure,
+.reader-doc .fig-wrap {
+  margin: 36px auto;
+  text-align: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Side-by-side figures: when a <div> or <section> contains multiple <figure> elements
+   on the same line (as Docling sometimes generates), display them as a flex row */
+.reader-doc div > figure + figure,
+.reader-doc section > figure + figure,
+.reader-doc p + figure + figure {
+  display: inline-block;
+  vertical-align: top;
+  max-width: 48%;
+  margin: 4px 1%;
+}
+.reader-doc div:has(> figure + figure),
+.reader-doc section:has(> figure + figure) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  align-items: flex-start;
+  margin: 24px 0;
+}
+.reader-doc div:has(> figure + figure) figure,
+.reader-doc section:has(> figure + figure) figure {
+  flex: 1 1 auto;
+  min-width: 120px;
+  max-width: 48%;
+  margin: 0;
+}
+
+/* ── Figures sans légende : affichage neutre (schémas, diagrammes, images) */
+/* Ne PAS styler comme des formules — les vraies formules converties par le
+   backend sont dans des <div class="formula">, pas dans des <figure>.    */
+.reader-doc figure:not(:has(figcaption)),
+.reader-doc figure:has(figcaption:empty) {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.reader-doc figure img,
+.reader-doc .fig-wrap img,
+.reader-doc img {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.08);
+  border: 1px solid var(--bd);
+  cursor: zoom-in;
+}
+
+.reader-doc figcaption,
+.reader-doc .fig-cap,
+.reader-doc figure .caption,
+.reader-doc figure div.caption {
+  font-family: var(--fu);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx3);
+  margin-top: 10px;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ── Tables ── */
+.reader-doc .tw,
+/* ── Tables ── (TD-011) ─────────────────────────────────────────────────── */
+.reader-doc .table-wrap {
+  overflow-x: auto;
+  margin: 24px 0;
+  border-radius: 10px;
+  border: 1px solid var(--bd);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.reader-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--fu);
+  font-size: 13.5px;
+}
+
+/* En-tête : gris neutre — FIX-038 supprime l'orange pour les tableaux techniques */
+.reader-doc thead tr {
+  background: var(--bg3);
+}
+.reader-doc th {
+  color: var(--tx);
+  font-weight: 700;
+  padding: 9px 14px;
+  text-align: left;
+  font-size: 13px;
+  letter-spacing: .02em;
+  border-right: 1px solid var(--bd);
+  border-bottom: 2px solid var(--bd2);
+  white-space: nowrap;
+}
+.reader-doc th:last-child { border-right: none; }
+
+/* Cellules : bordures complètes pour lisibilité tableau technique */
+.reader-doc td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--bd);
+  border-right: 1px solid var(--bd);
+  color: var(--tx2);
+  vertical-align: top;
+  line-height: 1.5;
+  transition: background-color 0.15s ease;
+}
+.reader-doc td:last-child       { border-right: none; }
+.reader-doc tr:last-child td     { border-bottom: none; }
+.reader-doc tbody tr:nth-child(even) td { background: var(--bg3); }
+.reader-doc tbody tr:hover td    { background: var(--or-bg); }
+
+/* ── Equations / Formulas ── */
+.reader-doc .f,
+.reader-doc .formula,
+.reader-doc .equation,
+.reader-doc mjx-container[display="true"],
+.reader-doc .katex-display {
+  background: var(--bl-bg);
+  border: 1px solid var(--bl-bd);
+  border-left: 4px solid var(--bl);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 20px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,.03);
+  position: relative;
+}
+
+/* Reset KaTeX nested inside equation/formula blocks to avoid double styling and scrolling issues */
+.reader-doc .formula .katex-display,
+.reader-doc .equation .katex-display,
+.reader-doc .formula mjx-container,
+.reader-doc .equation mjx-container {
+  background: none !important;
+  border: none !important;
+  border-left: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  overflow-x: visible !important;
+}
+
+/* Badge "∑ Formule" only on Docling explicit containers, not on every KaTeX block */
+.reader-doc .formula::before,
+.reader-doc .equation::before {
+  content: "∑ Formule";
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  font-family: var(--fu);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bl);
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 20px;
+  line-height: 1;
+}
+.reader-doc .formula,
+.reader-doc .equation {
+  padding-top: 30px; /* space for the badge */
+}
+
+/* Inline math */
+annotation,
+.reader-doc annotation {
+  display: none !important;
+}
+.reader-doc mjx-container:not([display="true"]),
+.reader-doc .katex:not(.katex-display .katex) {
+  font-size: 1.02em;
+}
+
+div.formula-not-decoded,
+span.formula-not-decoded,
+.reader-doc div.formula-not-decoded,
+.reader-doc span.formula-not-decoded {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin: 2px 4px;
+  font-family: var(--fm);
+  font-size: 11px;
+  color: var(--tx3);
+  font-style: italic;
+  vertical-align: middle;
+  cursor: default;
+  white-space: nowrap;
+}
+
+div.formula-not-decoded::before,
+span.formula-not-decoded::before,
+.reader-doc div.formula-not-decoded::before,
+.reader-doc span.formula-not-decoded::before {
+  content: "∑";
+  font-style: normal;
+  font-size: 12px;
+  color: var(--or);
+  font-weight: 700;
+}
+
+/* ── Code ── */
+.reader-doc pre {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 18px 0;
+  font-family: var(--fm);
+  font-size: 13px;
+  color: var(--tx2);
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
+}
+.reader-doc code {
+  font-family: var(--fm);
+  font-size: .9em;
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--tx2);
+}
+.reader-doc pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* ── Callout boxes ── */
+.reader-doc blockquote,
+.reader-doc .nt {
+  position: relative;
+  background: var(--or-bg);
+  border: 1px solid var(--or-bd);
+  border-left: 4px solid var(--or);
+  border-radius: 8px;
+  padding: 38px 18px 14px;
+  margin: 18px 0;
+  color: var(--tx2);
+}
+.reader-doc blockquote p { font-style: italic; margin: 0; }
+
+.reader-doc blockquote::before,
+.reader-doc .nt::before {
+  content: "📝 Note";
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-family: var(--fu);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--or);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Warnings */
+.reader-doc .wn {
+  position: relative;
+  background: rgba(220, 38, 38, 0.04);
+  border: 1px solid rgba(220, 38, 38, 0.12);
+  border-left: 4px solid var(--rd);
+  border-radius: 8px;
+  padding: 38px 18px 14px;
+  margin: 18px 0;
+  color: var(--tx2);
+}
+.reader--dark .reader-doc .wn {
+  background: rgba(248, 113, 113, 0.06);
+  border-color: rgba(248, 113, 113, 0.18);
+}
+.reader-doc .wn::before {
+  content: "⚠️ Avertissement";
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-family: var(--fu);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--rd);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Tips */
+.reader-doc .tp {
+  position: relative;
+  background: var(--gn-bg);
+  border: 1px solid rgba(5, 150, 105, 0.12);
+  border-left: 4px solid var(--gn);
+  border-radius: 8px;
+  padding: 38px 18px 14px;
+  margin: 18px 0;
+  color: var(--tx2);
+}
+.reader-doc .tp::before {
+  content: "💡 Astuce";
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-family: var(--fu);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gn);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Lists ── */
+.reader-doc ul, .reader-doc ol {
+  padding-left: 26px;
+  margin: 0 0 16px;
+  font-family: var(--fb);
+}
+.reader-doc li {
+  margin-bottom: .5em;
+  line-height: var(--lh);
+  color: var(--tx);
+}
+.reader-doc li::marker { color: var(--or); font-weight: 700; }
+
+/* ── HR ── */
+.reader-doc hr {
+  border: none;
+  height: 1px;
+  background: var(--bd);
+  margin: 40px 0;
+}
+
+/* ── Markdown mode ── */
+.reader-doc--md {
+  padding-top: 8px;
+}
+.reader-doc--md .katex-display {
+  background: var(--bl-bg);
+  border: 1px solid var(--bl-bd);
+  border-left: 4px solid var(--bl);
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+/* ── Focus navigation ───────────────────────────────────────── */
+.reader-focus-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0 20px;
+  border-top: 1px solid var(--bd);
+  margin-top: 12px;
+}
+.reader-nav-btn {
+  font-family: var(--fu);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 22px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg2);
+  color: var(--tx2);
+  cursor: pointer;
+  transition: all .2s ease;
+}
+.reader-nav-btn:hover:not(:disabled) {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+  transform: translateY(-1px);
+}
+.reader-nav-btn:disabled { opacity: .35; cursor: default; }
+.reader-nav-btn--exit {
+  background: var(--or);
+  border-color: var(--or);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.2);
+}
+.reader-nav-btn--exit:hover {
+  background: color-mix(in srgb, var(--or) 85%, black);
+  border-color: color-mix(in srgb, var(--or) 85%, black);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+/* ── Loading ── */
+.reader-loader {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  padding: 80px 0;
+}
+.reader-loader span {
+  display: block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--or);
+  animation: reader-pulse 1.4s ease-in-out infinite both;
+}
+.reader-loader span:nth-child(2) { animation-delay: .18s; }
+.reader-loader span:nth-child(3) { animation-delay: .36s; }
+@keyframes reader-pulse {
+  0%, 80%, 100% { transform: scale(.55); opacity: .35; }
+  40%           { transform: scale(1);   opacity: 1;   }
+}
+
+/* ── States ── */
+.reader-state { text-align:center; padding:60px 20px; font-size:.9em; color:var(--tx3); }
+.reader-state--error { color: #ef4444; }
+
+/* ── Jump to top ────────────────────────────────────────────── */
+.reader-jump-top {
+  position: fixed;
+  bottom: 72px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  background: var(--or);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
+  z-index: 500;
+  transition: all .2s ease;
+}
+.reader-jump-top.is-on { display: flex; }
+.reader-jump-top:hover {
+  transform: translateY(-2px);
+  opacity: .95;
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+}
+
+/* ── Image lightbox ─────────────────────────────────────────── */
+.reader-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  cursor: zoom-out;
+  animation: lb-in .15s ease;
+}
+@keyframes lb-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.reader-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.7);
+  cursor: default;
+  border: none;
+}
+.reader-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+}
+.reader-lightbox-close:hover {
+  background: rgba(255,255,255,.25);
+}
+
+/* ── Table non extraite ─────────────────────────────────────── */
+.table-unavailable {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border: 1px dashed var(--bd2);
+  border-radius: 6px;
+  background: var(--bg3);
+}
+.table-unavailable-caption {
+  font-style: italic;
+  font-size: 0.88em;
+  color: var(--tx2);
+  margin: 0 0 6px;
+}
+.table-unavailable-msg {
+  font-size: 0.8em;
+  color: var(--tx3);
+  margin: 0;
+}
+
+/* ── Reading Layout Themes ──────────────────────────────────── */
+
+/* 1. t-reading (Minimalist Reader) */
+.t-reading {
+  --max-w: 680px;
+  --fb: Georgia, 'Source Serif 4', serif;
+  --lh: 1.85;
+}
+.t-reading .reader-doc h2 + p {
+  font-size: 1.1em;
+  line-height: 1.75;
+}
+.t-reading .reader-doc hr {
+  border: none;
+  height: auto;
+  text-align: center;
+  margin: 40px 0;
+  background: none;
+}
+.t-reading .reader-doc hr::after {
+  content: "·  ·  ·";
+  font-size: 20px;
+  color: var(--tx3);
+  letter-spacing: 6px;
+}
+
+/* 2. t-article (Tufte Editorial) */
+.t-article {
+  --max-w: 760px;
+  --fb: Georgia, 'Source Serif 4', serif;
+}
+.t-article .reader-doc h2 {
+  border-top: 1px solid var(--tx);
+  border-bottom: none;
+  padding-top: 24px;
+  margin-top: 48px;
+}
+.t-article .reader-doc hr {
+  width: 30%;
+  margin: 40px 0;
+  margin-left: 0;
+  border: none;
+  border-top: 1px solid var(--bd2);
+  background: none;
+  height: 0;
+}
+
+/* 3. t-report (Whitepaper Report) */
+.t-report {
+  --max-w: 900px;
+  --fb: var(--fu); /* Sans-serif */
+  --lh: 1.75;
+}
+.t-report .reader-doc table {
+  border: 1px solid var(--bd2);
+}
+.t-report .reader-doc th,
+.t-report .reader-doc td {
+  border: 1px solid var(--bd);
+}
+.t-report .reader-doc thead tr {
+  background: var(--tx);
+}
+.t-report .reader-doc thead th {
+  color: var(--bg2);
+}
+
+/* 4. t-interactive (Interactive Book) */
+.t-interactive {
+  --max-w: 900px;
+  --fb: var(--fu); /* Sans-serif */
+}
+
+/* 5. t-cstb — layout page A4, pleine largeur (ne pas limiter) */
+.t-cstb {
+  --max-w: 100%;
+}
+.t-cstb .reader-content {
+  padding: 0;
+}
+
+/* --- Theme Light Mode overrides (colors and parchment feels) --- */
+.t-reading:not(.reader--dark) {
+  --bg: #fcfbfa;
+  --bg2: #ffffff;
+  --bg3: #f5f3f0;
+  --tx: #2a2421;
+  --tx2: #4a3f3a;
+  --bd: #edece9;
+  --bd2: #dfdeda;
+}
+.t-article:not(.reader--dark) {
+  --bg: #fffff8;
+  --bg2: #ffffff;
+  --bg3: #f6f6eb;
+  --tx: #111111;
+  --tx2: #333333;
+  --bd: #f0f0e0;
+  --bd2: #d8d8c0;
+}
+.t-report:not(.reader--dark) {
+  --bg: #ffffff;
+  --bg2: #ffffff;
+  --bg3: #f1f5f9;
+  --tx: #1e293b;
+  --tx2: #334155;
+  --bd: #e2e8f0;
+  --bd2: #cbd5e1;
+}
+.t-interactive:not(.reader--dark) {
+  --bg: #f5f8f6;
+  --bg2: #ffffff;
+  --bg3: #eaf1ed;
+  --tx: #1c2c24;
+  --tx2: #2d4237;
+  --bd: #e4ece8;
+  --bd2: #cddcd4;
+  --or: #ff8c00;
+  --or-bg: rgba(255, 140, 0, 0.06);
+  --or-bd: rgba(255, 140, 0, 0.18);
+}
+.t-cstb:not(.reader--dark) {
+  --bg: #ffffff;
+  --bg2: #ffffff;
+  --bg3: #f5f5f5;
+  --tx: #212121;
+  --tx2: #424242;
+  --tx3: #757575;
+  --bd: #e0e0e0;
+  --bd2: #bdbdbd;
+  --or: #ff8c00;
+  --or-bg: rgba(255, 140, 0, 0.06);
+  --or-bd: rgba(255, 140, 0, 0.18);
+}
+
+/* --- Theme Dark Mode overrides (sepia/cream/grey/sapin dark variants) --- */
+.t-reading.reader--dark {
+  --bg: #1a1614;
+  --bg2: #241f1c;
+  --bg3: #2d2623;
+  --tx: #dfd7cf;
+  --tx2: #c7bdbc;
+  --tx3: #9f9491;
+  --bd: #2d2623;
+  --bd2: #3d3430;
+  --or: #e07a5f;
+  --or-bg: rgba(224, 122, 95, 0.08);
+  --or-bd: rgba(224, 122, 95, 0.22);
+}
+
+.t-article.reader--dark {
+  --bg: #1c1b18;
+  --bg2: #252420;
+  --bg3: #2e2c28;
+  --tx: #e8e6e3;
+  --tx2: #cfccc8;
+  --tx3: #a8a49f;
+  --bd: #2e2c28;
+  --bd2: #3e3b35;
+  --or: #d4a373;
+  --or-bg: rgba(212, 163, 115, 0.08);
+  --or-bd: rgba(212, 163, 115, 0.22);
+}
+
+.t-report.reader--dark {
+  --bg: #0f1319;
+  --bg2: #161c24;
+  --bg3: #1e2530;
+  --tx: #e2e8f0;
+  --tx2: #94a3b8;
+  --tx3: #64748b;
+  --bd: #1e2530;
+  --bd2: #2d3748;
+  --or: #60a5fa;
+  --or-bg: rgba(96, 165, 250, 0.08);
+  --or-bd: rgba(96, 165, 250, 0.22);
+}
+
+.t-interactive.reader--dark {
+  --bg: #0d1712;
+  --bg2: #14221b;
+  --bg3: #1b2d24;
+  --tx: #e1e9e5;
+  --tx2: #b8c7c0;
+  --tx3: #8a9c94;
+  --bd: #1b2d24;
+  --bd2: #253e31;
+  --or: #ffa726;
+  --or-bg: rgba(255, 167, 38, 0.08);
+  --or-bd: rgba(255, 167, 38, 0.22);
+}
+.t-cstb.reader--dark {
+  --bg: #121212;
+  --bg2: #1e1e1e;
+  --bg3: #2d2d2d;
+  --tx: #e0e0e0;
+  --tx2: #aaaaaa;
+  --tx3: #666666;
+  --bd: #333333;
+  --bd2: #444444;
+  --or: #ffa726;
+  --or-bg: rgba(255, 167, 38, 0.08);
+  --or-bd: rgba(255, 167, 38, 0.22);
+}
+
+/* Force notes to stay green in interactive theme & cstb theme */
+.t-interactive .reader-doc blockquote,
+.t-interactive .reader-doc .nt,
+.t-cstb .reader-doc blockquote,
+.t-cstb .reader-doc .nt {
+  background: #e8f5e9;
+  border: 1px solid #c8e6c9;
+  border-left: 4px solid #4caf50;
+  color: #2e4a3c;
+  padding: 32px 18px 14px;
+}
+.t-interactive.reader--dark .reader-doc blockquote,
+.t-interactive.reader--dark .reader-doc .nt,
+.t-cstb.reader--dark .reader-doc blockquote,
+.t-cstb.reader--dark .reader-doc .nt {
+  background: rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.2);
+  border-left: 4px solid #4caf50;
+  color: #b8c7c0;
+}
+.t-interactive .reader-doc blockquote::before,
+.t-interactive .reader-doc .nt::before,
+.t-cstb .reader-doc blockquote::before,
+.t-cstb .reader-doc .nt::before {
+  content: "NOTE";
+  color: #4caf50;
+  font-weight: bold;
+}
+
+/* ── FIX-038 : TOC placeholder (sidebar provides navigation) ── */
+.toc-sidebar-note {
+  font-family: var(--fu);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx4);
+  font-style: italic;
+  text-align: center;
+  padding: 14px 20px;
+  border: 1px dashed var(--bd);
+  border-radius: 8px;
+  margin: 12px 0 24px;
+  background: var(--bg3);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+  .reader-bc  { padding: 8px 20px; }
+  .reader-focus-header { padding: 16px 20px 12px; }
+  .reader-doc { --doc-px: 40px; }    /* F6.5 : marges latérales réduites tablette */
+}
+
+@media (max-width: 600px) {
+  .reader-doc { --doc-px: 16px; }    /* F6.5 : marges minimales mobile */
+}
+
+@media (max-width: 768px) {
+  .reader-toolbar-meta { display: none; }
+}
+
+@media (max-width: 600px) {
+  .reader-paper-title { font-size: 1.6em; }
+  .reader-stats { padding: 4px 16px; gap: 12px; }
+  .reader-focus-nav { flex-wrap: wrap; gap: 10px; }
+  .reader-nav-btn { flex: 1; text-align: center; font-size: 12px; padding: 8px 12px; }
+}
+
+/* ── Custom Highlighting and Annotation Styles ──────────────── */
+
+/* Highlight span in text */
+.reader-hl {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 0;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reader-hl:hover {
+  filter: brightness(0.95);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.15);
+}
+
+.reader--dark .reader-hl:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
+}
+
+/* Highlight with note active */
+.reader-hl--has-note {
+  border-bottom: 2.5px dashed var(--or);
+}
+
+/* Color dot in the toolbar button */
+.reader-hl-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--bd2);
+  margin-right: 4px;
+}
+
+/* Highlight popup color selection grid */
+.reader-hlc-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.reader-hlc-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+}
+
+.reader-hlc-btn:hover {
+  transform: scale(1.15);
+}
+
+.reader-hlc-btn.is-active {
+  border-color: var(--or);
+  transform: scale(1.1);
+  box-shadow: 0 0 8px var(--or);
+}
+
+.reader-pop-divider {
+  height: 1px;
+  background: var(--bd);
+  margin: 12px 0;
+}
+
+.reader-pop-action-btn {
+  width: 100%;
+  font-family: var(--fu);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg3);
+  color: var(--tx3);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reader-pop-action-btn:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+.reader--dark .reader-pop-action-btn:hover {
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+/* TTS Controls Popup */
+.reader-tool-pop--tts {
+  min-width: 240px !important;
+}
+
+.reader-tts-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.reader-tts-btn {
+  flex: 1;
+  font-family: var(--fu);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg3);
+  color: var(--tx2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.reader-tts-btn:hover:not(:disabled) {
+  border-color: var(--or);
+  color: var(--or);
+  background: var(--or-bg);
+}
+
+.reader-tts-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.reader-tts-btn--play {
+  background: var(--or);
+  color: #fff;
+  border-color: var(--or);
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.15);
+}
+
+.reader-tts-btn--play:hover {
+  background: color-mix(in srgb, var(--or) 85%, black);
+  border-color: color-mix(in srgb, var(--or) 85%, black);
+  color: #fff !important;
+}
+
+/* Floating Sticky Note Panel */
+.reader-note-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 80px; /* offset from the jump-top button */
+  width: 320px;
+  background: color-mix(in srgb, var(--bg2) 85%, transparent);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid var(--bd2);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.05);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: reader-note-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reader--dark .reader-note-panel {
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3), 0 0 2px rgba(255,255,255,0.05);
+}
+
+@keyframes reader-note-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.reader-note-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.reader-note-panel-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--or);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.reader-note-panel-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  font-weight: 300;
+  color: var(--tx3);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.reader-note-panel-close:hover {
+  background: var(--bg3);
+  color: var(--tx);
+}
+
+.reader-note-panel-context {
+  font-size: 11.5px;
+  color: var(--tx3);
+  font-style: italic;
+  background: var(--bg3);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid var(--or);
+  margin-bottom: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-note-panel-input {
+  width: 100%;
+  height: 90px;
+  background: var(--bg3);
+  color: var(--tx);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: var(--fu);
+  font-size: 13px;
+  box-sizing: border-box;
+  margin-bottom: 12px;
+  outline: none;
+  resize: none;
+  line-height: 1.5;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reader-note-panel-input:focus {
+  border-color: var(--or);
+  box-shadow: 0 0 0 2px var(--or-bg);
+}
+
+.reader-note-panel-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reader-note-btn {
+  font-family: var(--fu);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reader-note-btn--delete {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--tx3);
+}
+
+.reader-note-btn--delete:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.reader--dark .reader-note-btn--delete:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.reader-note-btn--save {
+  background: var(--or);
+  color: #fff;
+  border: 1px solid var(--or);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.2);
+}
+
+.reader-note-btn--save:hover {
+  background: color-mix(in srgb, var(--or) 85%, black);
+  border-color: color-mix(in srgb, var(--or) 85%, black);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+@media (max-width: 600px) {
+  .reader-note-panel {
+    bottom: 16px;
+    right: 16px;
+    width: calc(100% - 32px);
+  }
+}
+
+/* ── Search bar ──────────────────────────────────────────────────────────── */
+.reader-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--bd);
+  background: color-mix(in srgb, var(--bg2) 95%, transparent);
+  backdrop-filter: blur(8px);
+}
+.reader-search-icon { flex-shrink: 0; color: var(--tx3); }
+.reader-search-input {
+  flex: 1;
+  border: 1px solid var(--bd2);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-family: var(--fu);
+  background: var(--bg);
+  color: var(--tx);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.reader-search-input:focus { border-color: var(--or); }
+.reader-search-count {
+  font-size: 11px;
+  color: var(--tx3);
+  white-space: nowrap;
+  min-width: 80px;
+  text-align: center;
+}
+.reader-search-count.is-none { color: #ef4444; }
+.reader-search-nav {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  color: var(--tx2);
+  border-radius: 5px;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+}
+.reader-search-nav:hover:not(:disabled) { border-color: var(--or); color: var(--or); }
+.reader-search-nav:disabled { opacity: 0.35; cursor: not-allowed; }
+.reader-search-close {
+  background: none;
+  border: none;
+  color: var(--tx3);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.reader-search-close:hover { color: var(--tx); }
+
+/* Search match highlight */
+mark.reader-sm {
+  background: #fde68a;
+  color: #78350f;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.reader--dark mark.reader-sm { background: #92400e; color: #fde68a; }
+mark.reader-sm.is-active {
+  background: #f59e0b;
+  color: #1c1917;
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+.reader--dark mark.reader-sm.is-active { background: #d97706; color: #fff; }
+
+/* ── Skeleton loader ─────────────────────────────────────────────────────── */
+.reader-skeleton { padding: 24px 0; }
+.reader-sk-block {
+  background: linear-gradient(
+    90deg,
+    var(--bg3) 25%,
+    var(--bd) 37%,
+    var(--bg3) 63%
+  );
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.4s ease infinite;
+  border-radius: 5px;
+  margin: 9px 0;
+}
+@keyframes sk-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position:   0% 50%; }
+}
+
+/* ── Formula copy toast ──────────────────────────────────────────────────── */
+.formula-copy-toast {
+  display: none;
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 10px;
+  font-family: var(--fu);
+  font-weight: 600;
+  color: #fff;
+  background: var(--or);
+  padding: 2px 8px;
+  border-radius: 20px;
+  pointer-events: none;
+}
+.formula-copy-toast.is-visible { display: block; }
+.reader-doc .formula { cursor: pointer; }
+.reader-doc .formula:hover { outline: 1px dashed var(--bl-bd); }
+
+/* ── Print styles ────────────────────────────────────────────────────────── */
+@media print {
+  .reader-toolbar,
+  .reader-progress,
+  .reader-stats,
+  .reader-searchbar,
+  .reader-bc,
+  .reader-focus-header,
+  .reader-focus-nav,
+  .reader-jump-top,
+  .reader-lightbox,
+  .reader-minitoc,
+  .reader-note-panel,
+  .reader-paper-abstract-label { display: none !important; }
+
+  .reader { background: #fff !important; color: #000 !important; }
+  .reader-content { overflow: visible !important; height: auto !important; padding: 0 !important; }
+  .reader-cw { max-width: 100% !important; margin: 0 !important; }
+  .reader-doc { font-size: 11pt; line-height: 1.6; }
+  .reader-doc h1, .reader-doc h2, .reader-doc h3 {
+    page-break-after: avoid;
+    color: #000;
+    border-color: #ccc;
+  }
+  .reader-doc img { max-width: 100%; page-break-inside: avoid; }
+  .reader-doc table { page-break-inside: avoid; border-collapse: collapse; width: 100%; }
+  .reader-doc td, .reader-doc th { border: 1px solid #ccc; padding: 4px 8px; }
+  section[data-sid] { display: block !important; }
+}
+
+/* ── Mini-TOC flottante (TD-010) ──────────────────────────────── */
+.reader-minitoc {
+  position: fixed;
+  top: 128px;
+  right: 16px;
+  width: 220px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 0 0 8px;
+  z-index: 200;
+  box-shadow: 0 4px 24px rgba(0,0,0,.14);
+  font-family: var(--fu);
+  font-size: 11.5px;
+  scrollbar-width: thin;
+}
+.reader-minitoc-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--tx2);
+  border-bottom: 1px solid var(--bd);
+  position: sticky;
+  top: 0;
+  background: var(--card);
+}
+.reader-minitoc-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--tx2);
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.reader-minitoc-close:hover { color: var(--tx); }
+.reader-minitoc-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 6px;
+}
+.reader-minitoc-item {
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--tx2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+  line-height: 1.4;
+}
+.reader-minitoc-item:hover { background: var(--bd); color: var(--tx); }
+.reader-minitoc-item.is-active {
+  background: color-mix(in srgb, var(--or) 12%, transparent);
+  color: var(--or);
+  font-weight: 600;
+}
+.reader-minitoc-item.rmt-l1 { padding-left: 8px; }
+.reader-minitoc-item.rmt-l2 { padding-left: 18px; font-size: 11px; }
+.reader-minitoc-item.rmt-l3 { padding-left: 28px; font-size: 10.5px; }
+.reader-minitoc-item.rmt-l4 { padding-left: 36px; font-size: 10px; }
+@media (max-width: 1100px) { .reader-minitoc { display: none; } }
+
+/* ── Zoom control (style Word) ──────────────────────────────── */
+.reader-zoom-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Narrow −/+ flanking buttons */
+.reader-zoom-btn {
+  padding: 5px 9px !important;
+  min-width: 28px;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  justify-content: center;
+}
+.reader-zoom-btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Percentage button — fixed width so it doesn't jump when digits change */
+.reader-zoom-pct {
+  min-width: 52px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Zoom popup — narrower than typo popup */
+.reader-zoom-pop {
+  min-width: 170px !important;
+}
+
+/* Preset buttons inside the zoom popup */
+.reader-zoom-preset {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--fu);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tx2);
+  transition: background .12s, color .12s;
+}
+.reader-zoom-preset:hover {
+  background: var(--bd);
+  color: var(--tx);
+}
+.reader-zoom-preset.is-active {
+  background: color-mix(in srgb, var(--or) 12%, transparent);
+  color: var(--or);
+  font-weight: 700;
+}
+

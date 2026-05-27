@@ -4,9 +4,13 @@ Visualiseur de PDF **local et self-hosted** avec navigation structurée :
 
 - **Sommaire** reconstitué à partir de la numérotation, même quand le PDF n'a pas d'outline natif
 - **Galerie de figures** extraites comme objets de première classe (clic → preview HD + caption)
+- **Onglet Tables** : aperçu HTML des tableaux Docling avec lien vers la page
 - **Recherche plein-texte** dans le PDF avec highlight
 - **Export Markdown** du document
+- **Reader Markdown** avec 2 thèmes (reading / interactive) et rendu KaTeX pour les équations
+- **PDF cherchable** généré à la demande via OCRmyPDF + Tesseract (bouton OCR sidebar)
 - Synchronisation bidirectionnelle scroll viewer ↔ outline
+- **Fast path natif** : PDFs avec texte embarqué traités en ~1s (vs 25s+ Docling)
 - Mix natif + scanné géré automatiquement (OCR auto via Docling/RapidOCR)
 
 Pas de cloud, pas d'authentification, pas de stockage partagé. Un user, une machine.
@@ -24,7 +28,7 @@ cd pdf-viewer
 cd backend
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload &
+uvicorn main:app --reload --reload-exclude .venv &
 cd ..
 
 # Frontend (autre terminal recommandé)
@@ -108,12 +112,16 @@ pdf-viewer/
 
 | Méthode | Route | Description |
 |---|---|---|
-| `POST` | `/process` | Upload un PDF, retourne `{doc_id, outline, pages, figures, …}` |
+| `POST` | `/process` | Upload un PDF, retourne `{doc_id, outline, pages, figures, tables, …}` |
 | `GET` | `/doc/{id}/raw` | result.json complet |
 | `GET` | `/doc/{id}/outline` | Arbre des sections |
 | `GET` | `/doc/{id}/figure/{fig_id}` | PNG d'une figure |
 | `GET` | `/doc/{id}/pdf` | PDF source |
 | `GET` | `/doc/{id}/markdown` | Export Markdown (généré à la demande si absent) |
+| `GET` | `/doc/{id}/searchable-pdf` | PDF avec couche texte OCR (OCRmyPDF + Tesseract) |
+| `POST` | `/doc/{id}/ocr-image/{fig_id}` | OCR pytesseract direct sur une figure PNG |
+| `POST` | `/doc/{id}/latex-ocr` | Lance pix2tex sur toutes les figures (optionnel) |
+| `GET` | `/tesseract/status` | Disponibilité Tesseract, version, langues |
 | `DELETE` | `/doc/{id}` | Purge le cache du document |
 
 ## Limitations connues
@@ -128,6 +136,7 @@ Détail dans [TECHNICAL_DEBT.md](./TECHNICAL_DEBT.md).
 
 ## Documentation projet
 
+- [IMPLEMENTATION.md](./IMPLEMENTATION.md) — **journal complet de toutes les fonctionnalités ajoutées** (fast path, tables, OCR, Reader, LaTeX-OCR)
 - [SPEC.md](./SPEC.md) — spécification stable (source de vérité)
 - [BACKLOG.md](./BACKLOG.md) — phases et épics
 - [PROGRESS.md](./PROGRESS.md) — état global, derniers changements

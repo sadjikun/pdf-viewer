@@ -146,3 +146,100 @@
 .figovl-goto:hover {
   background: #4a8af0;
 }
+
+.figovl-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.figovl-ctrl-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.figovl-ctrl-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.figovl-ctrl-btn:hover:not(:disabled) {
+  background: var(--row-hover, #20232a);
+  color: var(--or, #ff8c00);
+}
+
+.figovl-ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.figovl-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border, #2a2d36);
+  margin: 0 0.25rem;
+}
+
+/* Overrides de thème CSTB / Le Reef */
+.theme-cstb .figovl {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-glass, #e0e0e0);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  color: var(--text-primary, #212121);
+}
+
+.theme-cstb .figovl-head {
+  border-bottom: 1px solid var(--border-glass, #e0e0e0);
+}
+
+.theme-cstb .figovl-foot {
+  border-top: 1px solid var(--border-glass, #e0e0e0);
+}
+
+.theme-cstb .figovl-imgwrap {
+  background: #fbfbfb;
+}
+
+.theme-cstb.reader--dark .figovl-imgwrap {
+  background: #141414;
+}
+
+.theme-cstb .figovl-ctrl-btn:hover:not(:disabled) {
+  background: var(--bg3, #f5f5f5);
+  color: var(--or, #ff8c00);
+}
+
+.theme-cstb.reader--dark .figovl-ctrl-btn:hover:not(:disabled) {
+  background: #2d2d2d;
+  color: #ffa726;
+}
+
+.theme-cstb .figovl-close:hover {
+  background: var(--bg3, #f5f5f5);
+  color: #ff3b30;
+}
+
+.theme-cstb.reader--dark .figovl-close:hover {
+  background: #2d2d2d;
+  color: #ff5252;
+}
+
+.theme-cstb .figovl-divider {
+  background: var(--border-glass, #e0e0e0);
+}
+
