@@ -9,6 +9,7 @@ Endpoints :
   GET  /doc/{id}/markdown                → export .md
   GET  /doc/{id}/searchable-pdf          → PDF avec couche texte OCR (OCRmyPDF)
   POST /doc/{id}/latex-ocr               → (re)lance LaTeX-OCR sur les figures
+  POST /doc/{id}/caption-figures         → génère caption_ai Florence-2 sur les figures
   DELETE /doc/{id}                       → supprime le cache
 """
 from __future__ import annotations
@@ -789,6 +790,66 @@ def run_latex_ocr(doc_id: str) -> JSONResponse:
                 updated += 1
         except Exception:
             pass
+
+    with open(ddir / "result.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+
+    return JSONResponse({"status": "ok", "figures_updated": updated})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Florence-2 : captioning IA de toutes les figures du document
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/doc/{doc_id}/caption-figures")
+def caption_figures(doc_id: str) -> JSONResponse:
+    """Lance Florence-2 sur chaque figure et stocke caption_ai dans result.json.
+
+    Requiert : pip install einops timm (transformers + torch déjà installés)
+    Env : FLORENCE2_CAPTION=1 pour activer automatiquement pendant le pipeline.
+    Temps : ~1–3 s/figure sur CPU, ~0.2 s/figure sur GPU.
+    """
+    if not _valid_doc_id(doc_id):
+        raise HTTPException(400, "doc_id invalide")
+    ddir = _doc_dir(doc_id)
+    if not (ddir / "result.json").exists():
+        raise HTTPException(404, "Document inconnu")
+
+    try:
+        from transformers import AutoModelForCausalLM, AutoProcessor  # noqa: F401
+    except ImportError:
+        raise HTTPException(
+            503,
+            "Dépendances manquantes. Exécutez : pip install einops timm",
+        )
+
+    from pipeline import _florence_caption, _init_florence
+
+    if not _init_florence():
+        raise HTTPException(
+            503,
+            "Florence-2 non disponible — vérifiez les logs backend pour le détail.",
+        )
+
+    result = _load_result(doc_id)
+    figures = result.get("figures", [])
+    figures_dir = ddir / "figures"
+
+    from PIL import Image
+
+    updated = 0
+    for fig in figures:
+        img_path = figures_dir / f"{fig['id']}.png"
+        if not img_path.exists():
+            continue
+        try:
+            pil_img = Image.open(img_path).convert("RGB")
+            caption = _florence_caption(pil_img)
+            if caption:
+                fig["caption_ai"] = caption
+                updated += 1
+        except Exception as exc:
+            print(f"[caption-figures] {fig['id']} : {exc}")
 
     with open(ddir / "result.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)

@@ -20,6 +20,7 @@ export interface Figure {
   page: number | null;
   bbox: Bbox | null;
   caption: string;
+  caption_ai?: string;
   latex?: string;
 }
 

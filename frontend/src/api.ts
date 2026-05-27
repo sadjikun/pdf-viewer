@@ -75,6 +75,12 @@ export async function runLatexOcr(docId: string): Promise<{ figures_updated: num
   return res.json();
 }
 
+export async function captionFigures(docId: string): Promise<{ figures_updated: number }> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/caption-figures`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
 export interface TesseractStatus {
   available: boolean;
   cmd: string | null;

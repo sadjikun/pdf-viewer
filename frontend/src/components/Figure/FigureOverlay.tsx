@@ -232,6 +232,12 @@ function FigureOverlayContent({
         </div>
         <footer className="figovl-foot">
           {figure.caption && <p className="figovl-caption">{figure.caption}</p>}
+          {figure.caption_ai && (
+            <p className="figovl-caption figovl-caption-ai">
+              <span className="figovl-ai-badge">IA</span>
+              {figure.caption_ai}
+            </p>
+          )}
           <div className="figovl-actions">
             {figure.page != null && (
               <span className="figovl-page">page {figure.page}</span>

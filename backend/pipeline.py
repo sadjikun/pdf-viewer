@@ -657,6 +657,82 @@ else:
     print("[pipeline] pix2tex fallback desactive.")
 
 
+# ── Florence-2 (figure captioning) ───────────────────────────────────────────
+# Génère une description textuelle pour chaque figure extraite.
+# Modèle : microsoft/Florence-2-base (~450 MB, CPU, ~1-3 s/figure)
+# Activer : FLORENCE2_CAPTION=1
+# Désactiver : FLORENCE2_CAPTION=0 (défaut — opt-in car téléchargement 450 MB)
+FLORENCE2_CAPTION = os.environ.get("FLORENCE2_CAPTION", "0").strip() == "1"
+if FLORENCE2_CAPTION:
+    print("[pipeline] Florence-2 ACTIVE - 1er lancement = téléchargement HuggingFace (~450 MB)")
+else:
+    print("[pipeline] Florence-2 desactive. Mettre FLORENCE2_CAPTION=1 pour activer le captioning IA.")
+
+_FLORENCE_LOCK = threading.Lock()
+_florence_model = None
+_florence_processor = None
+_florence_loaded = False
+
+
+def _init_florence() -> bool:
+    """Charge Florence-2-base une seule fois (lazy singleton). Retourne True si disponible."""
+    global _florence_model, _florence_processor, _florence_loaded
+    if _florence_loaded:
+        return _florence_model is not None
+    _florence_loaded = True
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoProcessor
+        print("[pipeline] Florence-2 : chargement microsoft/Florence-2-base...")
+        _florence_processor = AutoProcessor.from_pretrained(
+            "microsoft/Florence-2-base", trust_remote_code=True
+        )
+        _florence_model = AutoModelForCausalLM.from_pretrained(
+            "microsoft/Florence-2-base",
+            trust_remote_code=True,
+            torch_dtype=torch.float32,
+        ).eval()
+        print("[pipeline] Florence-2 chargé")
+        return True
+    except Exception as e:
+        print(f"[pipeline] Florence-2 non disponible : {e}")
+        _florence_model = None
+        _florence_processor = None
+        return False
+
+
+def _florence_caption(img) -> str | None:
+    """Génère une description détaillée pour une image PIL via Florence-2.
+
+    Retourne une chaîne de caractères ou None en cas d'échec.
+    Sérialisé via _FLORENCE_LOCK — le modèle n'est pas thread-safe.
+    """
+    if not _init_florence():
+        return None
+    try:
+        import torch
+        task = "<DETAILED_CAPTION>"
+        with _FLORENCE_LOCK:
+            inputs = _florence_processor(text=task, images=img, return_tensors="pt")
+            with torch.no_grad():
+                ids = _florence_model.generate(
+                    input_ids=inputs["input_ids"],
+                    pixel_values=inputs["pixel_values"],
+                    max_new_tokens=128,
+                    do_sample=False,
+                    num_beams=3,
+                )
+            raw = _florence_processor.batch_decode(ids, skip_special_tokens=False)[0]
+            parsed = _florence_processor.post_process_generation(
+                raw, task=task, image_size=(img.width, img.height)
+            )
+        caption = (parsed.get(task) or "").strip()
+        return caption if len(caption) > 8 else None
+    except Exception as e:
+        print(f"[pipeline] Florence-2 caption erreur : {e}")
+        return None
+
+
 _CONVERTERS: dict[bool, DocumentConverter | None] = {True: None, False: None}
 
 def _converter(do_ocr: bool = False) -> DocumentConverter:
@@ -800,11 +876,21 @@ def _extraire_figures_doc(
         # LaTeX-OCR : uniquement à la demande explicite (bouton dans le viewer)
         latex = _latex_ocr_figure(img_path) if (do_latex_ocr and img_path.exists()) else None
 
+        # Florence-2 captioning : actif si FLORENCE2_CAPTION=1
+        caption_ai: str | None = None
+        if FLORENCE2_CAPTION and img_saved:
+            try:
+                from PIL import Image as _PIL
+                caption_ai = _florence_caption(_PIL.open(img_path))
+            except Exception:
+                pass
+
         figures.append({
             "id": fig_id,
             "page": page,
             "bbox": bbox,
             "caption": caption or "",
+            **({"caption_ai": caption_ai} if caption_ai else {}),
             **({"latex": latex} if latex else {}),
         })
     return figures
