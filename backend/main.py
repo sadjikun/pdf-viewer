@@ -8,7 +8,7 @@ Endpoints :
   GET  /doc/{id}/pdf                     → PDF source
   GET  /doc/{id}/markdown                → export .md
   GET  /doc/{id}/searchable-pdf          → PDF avec couche texte OCR (OCRmyPDF)
-  POST /doc/{id}/latex-ocr               → (re)lance LaTeX-OCR sur les figures
+  POST /doc/{id}/latex-ocr               → (re)lance LaTeX-OCR (Texify/pix2tex) sur les figures
   POST /doc/{id}/caption-figures         → génère caption_ai Florence-2 sur les figures
   DELETE /doc/{id}                       → supprime le cache
 """
@@ -750,51 +750,43 @@ def tesseract_status() -> JSONResponse:
 
 @app.post("/doc/{doc_id}/latex-ocr")
 def run_latex_ocr(doc_id: str) -> JSONResponse:
-    """Lance pix2tex sur les figures du document et met à jour result.json.
+    """Lance LaTeX-OCR (Texify ou pix2tex) sur les figures du document.
 
-    Requiert : pip install pix2tex
-    Si pix2tex n'est pas installé, retourne une 503.
+    Moteur actif : FORMULA_ENGINE env var (auto / texify / pix2tex).
+    Met à jour figures[].latex dans result.json.
     """
+    if not _valid_doc_id(doc_id):
+        raise HTTPException(400, "doc_id invalide")
     ddir = _doc_dir(doc_id)
     if not (ddir / "result.json").exists():
         raise HTTPException(404, "Document inconnu")
 
-    try:
-        from pix2tex.cli import LatexOCR  # type: ignore
-    except ImportError:
-        raise HTTPException(503, "pix2tex non installé. Exécutez : pip install pix2tex")
+    from pipeline import _latex_ocr_figure, _resolve_engine
+
+    engine = _resolve_engine()
+    if engine == "none":
+        raise HTTPException(
+            503,
+            "Aucun moteur LaTeX-OCR disponible. "
+            "Installez texify (pip install texify) ou pix2tex (pip install pix2tex).",
+        )
 
     result = _load_result(doc_id)
     figures = result.get("figures", [])
     figures_dir = ddir / "figures"
 
-    try:
-        from PIL import Image
-        model = LatexOCR()
-    except Exception as e:
-        raise HTTPException(422, f"Chargement pix2tex échoué : {e}")
-
     updated = 0
     for fig in figures:
         img_path = figures_dir / f"{fig['id']}.png"
-        if not img_path.exists():
-            continue
-        try:
-            img = Image.open(img_path)
-            w, h = img.size
-            if h > w * 0.6 or w * h > 1_000_000:
-                continue
-            latex = model(img)
-            if latex and 3 <= len(latex) <= 600:
-                fig["latex"] = latex.strip()
-                updated += 1
-        except Exception:
-            pass
+        latex = _latex_ocr_figure(img_path)
+        if latex:
+            fig["latex"] = latex
+            updated += 1
 
     with open(ddir / "result.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
-    return JSONResponse({"status": "ok", "figures_updated": updated})
+    return JSONResponse({"status": "ok", "engine": engine, "figures_updated": updated})
 
 
 # ─────────────────────────────────────────────────────────────────────────────

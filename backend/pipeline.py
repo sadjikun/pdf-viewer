@@ -657,6 +657,109 @@ else:
     print("[pipeline] pix2tex fallback desactive.")
 
 
+# ── Moteur LaTeX-OCR ──────────────────────────────────────────────────────────
+# FORMULA_ENGINE contrôle quel moteur est utilisé pour convertir les formules
+# non décodées par Docling en LaTeX :
+#   "texify"  → Texify (VikParuchuri) — batch, plus précis sur les formules complexes
+#   "pix2tex" → pix2tex legacy — image par image
+#   "auto"    → Texify si installé, sinon pix2tex (défaut)
+FORMULA_ENGINE = os.environ.get("FORMULA_ENGINE", "auto").strip().lower()
+print(f"[pipeline] FORMULA_ENGINE={FORMULA_ENGINE}")
+
+# ── Texify (LaTeX-OCR) ────────────────────────────────────────────────────────
+_texify_model     = None
+_texify_processor = None
+_texify_loaded    = False
+
+
+def _init_texify() -> bool:
+    """Charge le modèle Texify une seule fois (lazy singleton).
+
+    Retourne True si le modèle est disponible.
+    Téléchargement HuggingFace ~500 MB au premier lancement.
+    """
+    global _texify_model, _texify_processor, _texify_loaded
+    if _texify_loaded:
+        return _texify_model is not None
+    _texify_loaded = True
+    try:
+        from texify.model.model import load_model        # type: ignore
+        from texify.model.processor import load_processor  # type: ignore
+        print("[pipeline] Texify : chargement modèle (~500 MB)...")
+        _texify_processor = load_processor()
+        _texify_model     = load_model()
+        print("[pipeline] Texify chargé")
+        return True
+    except ImportError:
+        print("[pipeline] Texify non installé. pip install texify")
+        return False
+    except Exception as exc:
+        print(f"[pipeline] Texify erreur chargement : {exc}")
+        return False
+
+
+def _resolve_engine() -> str:
+    """Retourne 'texify' ou 'pix2tex' selon FORMULA_ENGINE et les deps installées."""
+    if FORMULA_ENGINE == "texify":
+        return "texify"
+    if FORMULA_ENGINE == "pix2tex":
+        return "pix2tex"
+    # auto : texify en priorité
+    if _init_texify():
+        return "texify"
+    _init_latex_ocr()
+    return "pix2tex" if _latex_model is not None else "none"
+
+
+def _latex_ocr_batch(imgs: list) -> list[str | None]:
+    """Exécute LaTeX-OCR sur une liste d'images PIL.
+
+    Retourne une liste de même longueur : chaîne LaTeX ou None.
+    - Texify   : un seul appel batch_inference (efficace, ~modèle 500 MB)
+    - pix2tex  : traitement image par image via _pix2tex_predict
+    Sérialisé via _PIX2TEX_LOCK — les deux moteurs partagent PyTorch.
+    """
+    if not imgs:
+        return []
+
+    engine = _resolve_engine()
+
+    if engine == "texify":
+        try:
+            from texify.inference import batch_inference  # type: ignore
+            with _PIX2TEX_LOCK:
+                raw = batch_inference(imgs, _texify_model, _texify_processor)
+            out: list[str | None] = []
+            for r in raw:
+                s = (r or "").strip()
+                s = _sanitize_latex(s)
+                out.append(s if 3 <= len(s) <= 800 else None)
+            return out
+        except Exception as exc:
+            print(f"[pipeline] Texify batch erreur : {exc}")
+            return [None] * len(imgs)
+
+    if engine == "pix2tex":
+        results: list[str | None] = []
+        for img in imgs:
+            try:
+                with _PIX2TEX_LOCK:
+                    latex = _pix2tex_predict(_latex_model, img)
+                s = (latex or "").strip()
+                results.append(s if 3 <= len(s) <= 800 else None)
+            except Exception:
+                results.append(None)
+        return results
+
+    return [None] * len(imgs)
+
+
+def _latex_ocr_single(img) -> str | None:
+    """Raccourci : OCR sur une seule image. Retourne LaTeX ou None."""
+    results = _latex_ocr_batch([img])
+    return results[0] if results else None
+
+
 # ── Florence-2 (figure captioning) ───────────────────────────────────────────
 # Génère une description textuelle pour chaque figure extraite.
 # Modèle : microsoft/Florence-2-base (~450 MB, CPU, ~1-3 s/figure)
@@ -1033,23 +1136,19 @@ def _init_latex_ocr():
 
 
 def _latex_ocr_figure(img_path: Path) -> str | None:
-    """Tente d'extraire du LaTeX depuis une image de figure. Retourne None si pix2tex absent."""
-    _init_latex_ocr()
-    if _latex_model is None:
-        return None
+    """Extrait du LaTeX depuis une figure PNG via le moteur actif (FORMULA_ENGINE).
 
+    Heuristique : skip les images trop carrées ou trop grandes (photos/schémas).
+    Texify tolère un ratio plus large (≤ 0.85) que pix2tex (≤ 0.6).
+    """
     try:
         from PIL import Image
         img = Image.open(img_path)
         w, h = img.size
-        # Heuristique : une équation est typiquement large et peu haute
-        # On skippe les images carrées ou très grandes (photos, schémas)
-        if h > w * 0.6 or w * h > 1_000_000:
+        max_ratio = 0.85 if _resolve_engine() == "texify" else 0.6
+        if h > w * max_ratio or w * h > 2_000_000:
             return None
-        latex = _pix2tex_predict(_latex_model, img)
-        if not latex or len(latex) < 3 or len(latex) > 600:
-            return None
-        return latex.strip()
+        return _latex_ocr_single(img)
     except Exception:
         return None
 
@@ -1283,10 +1382,10 @@ def convertir_pdf(
                 sections_local:   list[dict[str, Any]]   = []
 
                 def _harvest(doc, page_start: int) -> None:
-                    # pix2tex item-level : sérialisé via lock car le modèle PyTorch
-                    # n'est pas thread-safe en inférence concurrente.
+                    # LaTeX-OCR item-level : collecte toutes les formules non décodées
+                    # puis appel batch unique (Texify) ou séquentiel (pix2tex).
                     if PIX2TEX_FALLBACK:
-                        n_pix2tex = 0
+                        formula_items: list[tuple[Any, Any]] = []  # (item, PIL image)
                         for item, _lvl in doc.iterate_items():
                             label_str = str(getattr(item, "label", "") or "").lower()
                             if "formula" not in label_str and "equation" not in label_str:
@@ -1297,17 +1396,21 @@ def convertir_pdf(
                             try:
                                 img = item.get_image(doc)
                                 if img is not None:
-                                    _init_latex_ocr()
-                                    with _PIX2TEX_LOCK:
-                                        if _latex_model is not None:
-                                            latex = _pix2tex_predict(_latex_model, img)
-                                            if latex and 3 <= len(latex.strip()) <= 600:
-                                                item.text = f"$${latex.strip()}$$"
-                                                n_pix2tex += 1
+                                    formula_items.append((item, img))
                             except Exception:
                                 pass
-                        if n_pix2tex:
-                            print(f"[pipeline] pix2tex : {n_pix2tex} formule(s) dans {batch_start+1}-{batch_end}")
+
+                        if formula_items:
+                            imgs   = [it[1] for it in formula_items]
+                            latexs = _latex_ocr_batch(imgs)
+                            n_decoded = 0
+                            for (item, _img), latex in zip(formula_items, latexs):
+                                if latex and 3 <= len(latex) <= 600:
+                                    item.text = f"$${latex}$$"
+                                    n_decoded += 1
+                            if n_decoded:
+                                engine = _resolve_engine()
+                                print(f"[pipeline] {engine} : {n_decoded} formule(s) batch {batch_start+1}-{batch_end}")
 
                     if not is_native:
                         sections_local.extend(_extraire_sections_doc(doc, page_start - 1, 0))
@@ -1470,17 +1573,13 @@ def convertir_pdf(
                     )
 
                 def _convert_figure_formulas(html: str) -> str:
-                    """Convertit les figures-formules (sans figcaption) via pix2tex.
+                    """Convertit les figures-formules (sans figcaption) via LaTeX-OCR.
 
-                    Piste B : les figures candidates sont traitées en parallèle via
-                    ThreadPoolExecutor (au lieu d'un re.sub séquentiel).
-                    Utilise _RE_FIG_FIGURE/_RE_FIG_B64 pré-compilés (Piste A).
+                    Collecte tous les candidats (figures sans légende, ratio largeur/hauteur ≥ 1.0),
+                    puis appel batch unique à _latex_ocr_batch (Texify ou pix2tex).
                     Doit tourner AVANT _deembed_images (images encore en base64).
                     """
                     if not PIX2TEX_FALLBACK:
-                        return html
-                    _init_latex_ocr()
-                    if _latex_model is None:
                         return html
 
                     import html as _hl
@@ -1492,7 +1591,7 @@ def convertir_pdf(
                         return html
 
                     # Étape 1 : identifier les candidats formules avec leur PIL Image
-                    pix2tex_tasks: list[tuple[int, Any]] = []  # (match_idx, PIL Image)
+                    tasks: list[tuple[int, Any]] = []  # (match_idx, PIL Image)
                     for idx, m in enumerate(all_matches):
                         content = m.group(1)
                         if '<figcaption' in content.lower():
@@ -1503,45 +1602,38 @@ def convertir_pdf(
                         try:
                             img = Image.open(_io.BytesIO(base64.b64decode(b64m.group(1))))
                             w, h = img.size
-                            if h == 0 or w / h < 1.2 or w * h > 1_500_000:
+                            # Texify gère les ratios plus larges ; pix2tex nécessite ≥ 1.2
+                            min_ratio = 1.0 if _resolve_engine() == "texify" else 1.2
+                            if h == 0 or w / h < min_ratio or w * h > 1_500_000:
                                 continue
-                            pix2tex_tasks.append((idx, img))
+                            tasks.append((idx, img))
                         except Exception:
                             continue
 
-                    if not pix2tex_tasks:
+                    if not tasks:
                         return html
 
-                    # Étape 2 : inférence pix2tex en parallèle (Piste B)
-                    def _predict_one(task: tuple[int, Any]) -> tuple[int, str | None]:
-                        task_idx, img = task
-                        try:
-                            with _PIX2TEX_LOCK:
-                                latex = _pix2tex_predict(_latex_model, img)
-                            if not latex:
-                                return task_idx, None
-                            latex = latex.strip()
-                            if len(latex) < 3 or len(latex) > 800:
-                                return task_idx, None
-                            if latex.startswith('$$') and latex.endswith('$$'):
-                                latex = latex[2:-2].strip()
-                            elif latex.startswith('$') and latex.endswith('$'):
-                                latex = latex[1:-1].strip()
-                            return task_idx, latex
-                        except Exception:
-                            return task_idx, None
+                    # Étape 2 : batch LaTeX-OCR (un seul appel pour tous les candidats)
+                    imgs    = [t[1] for t in tasks]
+                    latexs  = _latex_ocr_batch(imgs)
 
                     replacements: dict[int, str] = {}
-                    max_fig_workers = min(4, len(pix2tex_tasks))
-                    with ThreadPoolExecutor(max_workers=max_fig_workers) as pool:
-                        for task_idx, latex in pool.map(_predict_one, pix2tex_tasks):
-                            if latex:
-                                replacements[task_idx] = (
-                                    f'<div class="formula">'
-                                    f'<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">'
-                                    f'<annotation encoding="TeX">$${_hl.escape(latex)}$$</annotation>'
-                                    f'</math></div>'
-                                )
+                    for (task_idx, _img), latex in zip(tasks, latexs):
+                        if not latex:
+                            continue
+                        # Stripping outer $...$ — batch functions may or may not add them
+                        if latex.startswith('$$') and latex.endswith('$$'):
+                            latex = latex[2:-2].strip()
+                        elif latex.startswith('$') and latex.endswith('$'):
+                            latex = latex[1:-1].strip()
+                        if len(latex) < 3:
+                            continue
+                        replacements[task_idx] = (
+                            f'<div class="formula">'
+                            f'<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">'
+                            f'<annotation encoding="TeX">$${_hl.escape(latex)}$$</annotation>'
+                            f'</math></div>'
+                        )
 
                     if not replacements:
                         return html

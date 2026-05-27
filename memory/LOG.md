@@ -3,6 +3,14 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-27 — Texify : moteur LaTeX-OCR unifié (remplace pix2tex en moteur primaire)
+**Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `backend/requirements.txt`, `memory/formulas.md`
+**Résumé :** Intégration de Texify (VikParuchuri) comme moteur LaTeX-OCR primaire. Nouvelle abstraction `_latex_ocr_batch(imgs)` + `_resolve_engine()` qui dispatche vers Texify (batch, ~500 MB) ou pix2tex (fallback). Toutes les call-sites (harvest Docling, _convert_figure_formulas, _latex_ocr_figure, endpoint /latex-ocr) utilisent désormais les fonctions unifiées. Texify bénéficie d'une inférence batch native au lieu de ThreadPoolExecutor. Variable `FORMULA_ENGINE` (auto/texify/pix2tex).
+**Fixes introduits :** aucun
+**Points ouverts :** `pip install texify` pour activer
+
+---
+
 ### 2026-05-27 — Florence-2 : captioning IA des figures
 **Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `backend/requirements.txt`, `frontend/src/types.ts`, `frontend/src/api.ts`, `frontend/src/components/Gallery/Gallery.tsx`, `frontend/src/components/Gallery/Gallery.css`, `frontend/src/components/Figure/FigureOverlay.tsx`, `frontend/src/components/Figure/FigureOverlay.css`
 **Résumé :** Intégration de Florence-2-base (microsoft) pour générer automatiquement des descriptions textuelles des figures extraites. Singleton lazy avec `_init_florence()` + verrou `_FLORENCE_LOCK`, activé via `FLORENCE2_CAPTION=1`. Nouveau endpoint `POST /doc/{id}/caption-figures` pour lancer le captioning à la demande. Frontend : badge "IA" dans la galerie et dans la lightbox, bouton "Décrire les figures" dans l'onglet galerie, `caption_ai` stocké dans `result.json`.

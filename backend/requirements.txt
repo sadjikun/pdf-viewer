@@ -106,5 +106,6 @@ xlsxwriter==3.2.9
 ocrmypdf>=17.0
 pytesseract>=0.3.10
 pix2tex==0.1.4
+texify>=0.1.10
 einops>=0.8.0
 timm>=1.0.0
