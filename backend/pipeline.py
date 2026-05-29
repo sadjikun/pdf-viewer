@@ -25,6 +25,10 @@ import io
 # Disable automatic update checks of albumentations (prevents network timeouts on load)
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
+# Route HuggingFace downloads through mirror (hf-mirror.com) if HF_ENDPOINT not already set.
+# Needed when huggingface.co is blocked on the network.
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
 # Force UTF-8 on stdout/stderr to avoid cp1252 UnicodeEncodeError on Windows
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -794,6 +798,7 @@ def _init_florence() -> bool:
             "microsoft/Florence-2-base",
             trust_remote_code=True,
             torch_dtype=torch.float32,
+            attn_implementation="eager",
         ).eval()
         print("[pipeline] Florence-2 chargé")
         return True

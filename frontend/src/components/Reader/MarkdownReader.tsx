@@ -1028,6 +1028,8 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   // scrollToSection/scrollToPage positionne ce flag à true ; le scroll handler ne propagera pas
   // onPageChange pendant la durée de l'animation (≈ 600 ms).
   const isProgrammaticScrollRef = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [md, setMd] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [rawHtmlForDownload, setRawHtmlForDownload] = useState<string | null>(null);
@@ -1096,49 +1098,44 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
   // ── PDF page navigation state (FIX-016) ─────────────────────────────────────
   const [pdfPageNos, setPdfPageNos] = useState<number[]>([]);
-  const [currentPdfPage, setCurrentPdfPage] = useState(1);
-  const [pageMode, setPageMode] = useState(false); // one-page-at-a-time toggle
+  const [currentPdfPage, setCurrentPdfPage] = useState<number>(1);
 
-  // ── Surlignage & Notes & TTS State ──────────────────────────────────────────
-  const [hlMode, setHlMode] = useState(false);
-  const [hlColor, setHlColor] = useState("#ffe066");
+  // ── Highlights & notes ────────────────────────────────────────────────────
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [hlMode, setHlMode] = useState(false);
+  const [hlColor, setHlColor] = useState("#ffe066");
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
-  const [noteText, setNoteText] = useState("");
   const [showNotePanel, setShowNotePanel] = useState(false);
-  const [showHlPop, setShowHlPop] = useState(false);
-  const [showTtsPop, setShowTtsPop] = useState(false);
 
-  const [ttsRate, setTtsRate] = useState(1.0);
+  // ── TTS ───────────────────────────────────────────────────────────────────
   const [ttsActive, setTtsActive] = useState(false);
   const [ttsPaused, setTtsPaused] = useState(false);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [ttsRate, setTtsRate] = useState(1.0);
+  const [showTtsPop, setShowTtsPop] = useState(false);
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  const readingMinutes = Math.max(1, Math.round(words / 250));
+  // ── Highlight popover & page mode ─────────────────────────────────────────
+  const [showHlPop, setShowHlPop] = useState(false);
+  const [pageMode, setPageMode] = useState(false);
+  const [noteText, setNoteText] = useState("");
 
-  // ── Derived HTML ─────────────────────────────────────────────────────────
-  // En mode focus : masquer tout sauf la section active
+  // Temps de lecture estimé (200 mots/min)
+  const readingMinutes = useMemo(() => Math.ceil(words / 200), [words]);
+
+  // Focus mode: hide all sections except the active one AND its sub-sections (FIX-070)
   const visibleHtml = useMemo(() => {
-    if (!htmlContent) return null;
     const styles: string[] = [];
-    // Hide rs_pre if paper card is shown (avoids duplicate title/abstract)
-    if (paperMeta?.title) {
-      styles.push(`section[data-sid="rs_pre"]{display:none!important}`);
-    }
-    // Focus mode: hide all sections except the active one AND its sub-sections
-    if (focusSid) {
-      const n = (s: string) => s.toLowerCase().replace(/\W+/g, "");
-      const visibleSids: string[] = [focusSid];
-      const focusedTitle = sections[focusIdx]?.title ?? "";
+    if (!htmlContent) return htmlContent;
 
-      // Try to find the node and all its descendants in the outline tree
+    if (focusSid) {
+      const visibleSids: string[] = [focusSid];
       let descendantTitles: Set<string> | null = null;
+
+      const n = (s: string) => s.trim().toLowerCase();
+      const normalizedFocusTitle = n(sections[focusIdx]?.title ?? "");
+
       if (outline && outline.length > 0) {
-        // Helper to normalize and collect descendant titles
         const collectDescendantTitles = (node: OutlineNode, set: Set<string>) => {
-          set.add(n(node.title));
           const stripped = n(node.title.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
           if (stripped) set.add(stripped);
           if (node.children) {
@@ -1150,14 +1147,9 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
         const searchOutline = (nodes: OutlineNode[]): Set<string> | null => {
           for (const node of nodes) {
-            const nodeNorm = n(node.title);
-            const focusNorm = n(focusedTitle);
-            const strippedNode = n(node.title.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
-            const strippedFocus = n(focusedTitle.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
             if (
-              nodeNorm === focusNorm || 
-              (strippedNode && strippedNode === focusNorm) ||
-              (strippedFocus && nodeNorm === strippedFocus)
+              n(node.title) === normalizedFocusTitle ||
+              n(node.title.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, "")) === normalizedFocusTitle
             ) {
               const set = new Set<string>();
               collectDescendantTitles(node, set);

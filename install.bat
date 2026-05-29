@@ -118,7 +118,7 @@ REM ═════════════════════════�
 echo.
 echo  +--------------------------------------+
 echo  ^|  Installation terminee avec succes  ^|
-echo  ^|  Lance start.bat pour demarrer !    ^|
+echo  ^|  Lance launcher.bat pour demarrer ! ^|
 echo  +--------------------------------------+
 echo.
 pause

@@ -49,6 +49,10 @@ export function figureUrl(docId: string, figId: string): string {
   return `${API_BASE}/doc/${docId}/figure/${figId}`;
 }
 
+export function thumbnailUrl(docId: string): string {
+  return `${API_BASE}/doc/${docId}/thumbnail`;
+}
+
 export function markdownUrl(docId: string): string {
   return `${API_BASE}/doc/${docId}/markdown`;
 }
@@ -119,6 +123,22 @@ export interface DocStatus {
 
 export async function getDocStatus(docId: string): Promise<DocStatus> {
   const res = await fetch(`${API_BASE}/doc/${docId}/status`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function getAppMode(): Promise<{ mode: string }> {
+  const res = await fetch(`${API_BASE}/app-mode`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function setAppMode(mode: "standard" | "ai"): Promise<{ mode: string }> {
+  const res = await fetch(`${API_BASE}/app-mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
   return res.json();
 }

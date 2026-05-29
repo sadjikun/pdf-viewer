@@ -17,11 +17,15 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
+
+# Route HuggingFace downloads through mirror if HF_ENDPOINT not already set.
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 # Force UTF-8 sur stdout/stderr pour éviter les UnicodeEncodeError sur Windows (cp1252)
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -44,6 +48,9 @@ _CURRENT_PIPELINE_VERSION = "2026-05-25"
 
 active_tasks: dict[str, dict[str, Any]] = {}
 tasks_lock = threading.Lock()
+
+# Mode applicatif : "standard" | "ai" — modifiable à chaud depuis l'interface
+_app_mode: str = os.environ.get("APP_MODE", "standard")
 
 def update_task_progress(doc_id: str, progress: int, message: str):
     with tasks_lock:
@@ -307,6 +314,27 @@ def root() -> dict[str, str]:
     return {"status": "ok", "service": "pdf-viewer-api", "version": "0.2.0"}
 
 
+@app.get("/app-mode")
+def get_app_mode() -> dict[str, str]:
+    return {"mode": _app_mode}
+
+
+@app.post("/app-mode")
+def set_app_mode(body: dict) -> dict[str, str]:
+    global _app_mode
+    mode = body.get("mode", "standard")
+    if mode not in ("standard", "ai"):
+        raise HTTPException(400, "mode must be 'standard' or 'ai'")
+    _app_mode = mode
+    if mode == "ai":
+        os.environ["FLORENCE2_CAPTION"] = "1"
+        os.environ["FORMULA_ENGINE"] = "texify"
+    else:
+        os.environ.pop("FLORENCE2_CAPTION", None)
+        os.environ.pop("FORMULA_ENGINE", None)
+    return {"mode": _app_mode}
+
+
 @app.get("/library")
 def get_library() -> JSONResponse:
     """Retourne le catalogue local construit depuis le cache disque."""
@@ -393,8 +421,11 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if (ddir / "result.json").exists():
         with open(ddir / "result.json", encoding="utf-8") as f:
             cached = json.load(f)
-        # Patch filename if the cached result was saved before this field existed
-        if not cached.get("filename") and file.filename:
+        # Patch filename: always prefer the actual upload name over the cached
+        # internal name (e.g. "source.pdf") which is a generic placeholder.
+        _GENERIC_NAMES = {"source.pdf", "source", "document.pdf", "upload.pdf"}
+        cached_fn = cached.get("filename", "")
+        if file.filename and (not cached_fn or cached_fn.lower() in _GENERIC_NAMES):
             cached["filename"] = file.filename
             with open(ddir / "result.json", "w", encoding="utf-8") as f:
                 json.dump(cached, f, ensure_ascii=False, indent=2)
@@ -512,6 +543,37 @@ def get_figure(doc_id: str, fig_id: str) -> FileResponse:
     if not p.exists():
         raise HTTPException(404, "Figure inconnue")
     return FileResponse(p, media_type="image/png")
+
+
+@app.get("/doc/{doc_id}/thumbnail")
+def get_thumbnail(doc_id: str) -> FileResponse:
+    """Miniature de la première page du PDF (~200 px de large), mise en cache."""
+    from pipeline import _PDFIUM_LOCK
+    import pypdfium2 as pdfium
+
+    ddir = _doc_dir(doc_id)
+    thumb_path = ddir / "thumbnail.png"
+
+    if not thumb_path.exists():
+        sources = sorted(ddir.glob("source.pdf"))
+        if not sources:
+            raise HTTPException(404, "PDF source introuvable")
+        pdf_path = sources[0]
+        try:
+            with _PDFIUM_LOCK:
+                doc = pdfium.PdfDocument(str(pdf_path))
+                try:
+                    page = doc[0]
+                    # scale 0.35 ≈ 200 px de large pour une page A4 (595 pt @ 72 DPI)
+                    bitmap = page.render(scale=0.35)
+                    img = bitmap.to_pil()
+                finally:
+                    doc.close()
+            img.save(str(thumb_path), "PNG", optimize=True)
+        except Exception as exc:
+            raise HTTPException(500, f"Erreur rendu miniature : {exc}") from exc
+
+    return FileResponse(thumb_path, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
 
 @app.get("/doc/{doc_id}/html-image/{file_path:path}")

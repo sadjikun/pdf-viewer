@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { figureUrl } from "../../api";
+import { thumbnailUrl } from "../../api";
 import type { LibraryDocument, LibraryFailure, LibraryTask } from "../../types";
 import { UploadZone } from "../Upload/UploadZone";
 import "./Library.css";
@@ -231,12 +231,16 @@ function DocumentCard({
   onOpen: (docId: string) => void;
   onDelete: (docId: string) => void;
 }) {
-  const cover = doc.cover_figure_id ? figureUrl(doc.doc_id, doc.cover_figure_id) : null;
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const isPdf = !doc.file_type || doc.file_type.toLowerCase() === "pdf";
+  const showThumb = isPdf && !thumbFailed;
   return (
     <article className={`library-card${compact ? " library-card--compact" : ""}${isLast ? " is-last" : ""}`}>
       <button type="button" className="library-card-open" onClick={() => onOpen(doc.doc_id)}>
         <div className="library-poster">
-          {cover ? <img src={cover} alt="" loading="lazy" /> : <PosterFallback doc={doc} />}
+          {showThumb
+            ? <img src={thumbnailUrl(doc.doc_id)} alt="" loading="lazy" onError={() => setThumbFailed(true)} className="library-poster-thumb" />
+            : <PosterFallback doc={doc} />}
           <span className="library-type">{cleanType(doc.file_type)}</span>
           {doc.needs_reprocess && <span className="library-reprocess">Cache ancien</span>}
         </div>

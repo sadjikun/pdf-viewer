@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, benchmarkHtmlUrl, deleteDoc, getLibrary, getResult, getTesseractStatus, getDocStatus, markdownUrl, processPdf, pdfUrl, reprocessDoc, searchablePdfUrl, type TesseractStatus } from "./api";
+import { ApiError, benchmarkHtmlUrl, deleteDoc, getLibrary, getResult, getTesseractStatus, getDocStatus, getAppMode, setAppMode, markdownUrl, processPdf, pdfUrl, reprocessDoc, searchablePdfUrl, type TesseractStatus } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
 import { Library } from "./components/Library/Library";
@@ -87,6 +87,7 @@ function App() {
   });
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [lastDocId, setLastDocId] = useState<string | null>(() => localStorage.getItem(LS_KEY));
+  const [appMode, setAppModeState] = useState<"standard" | "ai">("standard");
 
   const [theme, setTheme] = useState<AppTheme>(
     () => {
@@ -190,6 +191,17 @@ function App() {
   const handleReaderTheme = (t: ReaderTheme) => {
     setReaderTheme(t);
     localStorage.setItem(LS_THEME_KEY, t);
+  };
+
+  useEffect(() => {
+    getAppMode().then((r) => setAppModeState(r.mode as "standard" | "ai")).catch(() => {});
+  }, []);
+
+  const handleAppModeToggle = async (mode: "standard" | "ai") => {
+    try {
+      await setAppMode(mode);
+      setAppModeState(mode);
+    } catch {}
   };
 
   const refreshLibrary = useCallback(async () => {
@@ -416,7 +428,7 @@ function App() {
 
   const handleReprocess = async () => {
     if (!doc) return;
-    const fastMode = window.confirm("Souhaitez-vous lancer le retraitement rapide (sans figures ni tableaux, ~1s) ?\nCliquez sur Annuler pour lancer le traitement complet (Docling, ~1-2 min).");
+    const fastMode = appMode === "standard";
     setReprocessing(true);
     setError(null);
     try {
@@ -671,7 +683,7 @@ function App() {
                 className="app-reset"
                 onClick={handleReprocess}
                 disabled={reprocessing}
-                title="Relance l'extraction complète (figures, tables) sur ce document"
+                title={appMode === "ai" ? "Retraitement complet — Florence-2 + Texify" : "Retraitement rapide — extraction native"}
               >
                 {reprocessing ? "…" : "Retraiter"}
               </button>
@@ -794,6 +806,26 @@ function App() {
             </button>
           </div>
         )}
+
+        {/* Toggle Standard / Mode IA */}
+        <div className="app-ai-toggle" role="group" aria-label="Mode de traitement">
+          <button
+            type="button"
+            className={`app-ai-btn${appMode === "standard" ? " is-active" : ""}`}
+            onClick={() => handleAppModeToggle("standard")}
+            title="Extraction rapide sans IA"
+          >
+            ⚡ Standard
+          </button>
+          <button
+            type="button"
+            className={`app-ai-btn app-ai-btn--ai${appMode === "ai" ? " is-active" : ""}`}
+            onClick={() => handleAppModeToggle("ai")}
+            title="Florence-2 (légendes figures) + Texify (formules)"
+          >
+            🤖 Mode IA
+          </button>
+        </div>
 
         <div className="app-sidebar-meta">
           {doc.n_pages > 0 && <>{doc.n_pages} page{doc.n_pages > 1 ? "s" : ""} · </>}

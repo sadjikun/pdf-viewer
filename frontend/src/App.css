@@ -265,6 +265,46 @@
   box-shadow: var(--shadow-glow);
 }
 
+/* ── Toggle Standard / Mode IA ── */
+.app-ai-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 1rem;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+}
+
+.app-ai-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-ai-btn:hover {
+  color: var(--text-primary);
+}
+
+.app-ai-btn.is-active {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+.app-ai-btn--ai.is-active {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.45);
+}
+
 .app-tabs {
   display: flex;
   gap: 8px;

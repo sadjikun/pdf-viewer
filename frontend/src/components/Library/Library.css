@@ -274,6 +274,11 @@
   display: block;
 }
 
+.library-poster-thumb {
+  object-fit: contain !important;
+  background: #fff;
+}
+
 /* Crease spine fold effect on the left of any book cover */
 .library-poster::before {
   content: "";
