@@ -906,8 +906,6 @@ def run_latex_ocr(doc_id: str) -> JSONResponse:
     Moteur actif : FORMULA_ENGINE env var (auto / texify / pix2tex).
     Met à jour figures[].latex dans result.json.
     """
-    if not _valid_doc_id(doc_id):
-        raise HTTPException(400, "doc_id invalide")
     ddir = _doc_dir(doc_id)
     if not (ddir / "result.json").exists():
         raise HTTPException(404, "Document inconnu")
@@ -952,8 +950,6 @@ def caption_figures(doc_id: str) -> JSONResponse:
     Env : FLORENCE2_CAPTION=1 pour activer automatiquement pendant le pipeline.
     Temps : ~1–3 s/figure sur CPU, ~0.2 s/figure sur GPU.
     """
-    if not _valid_doc_id(doc_id):
-        raise HTTPException(400, "doc_id invalide")
     ddir = _doc_dir(doc_id)
     if not (ddir / "result.json").exists():
         raise HTTPException(404, "Document inconnu")
