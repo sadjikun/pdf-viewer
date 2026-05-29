@@ -119,19 +119,24 @@
   font-weight: 600;
 }
 
-.app-theme-toggle {
-  background: none;
+.app-theme-select {
+  background: var(--card);
   border: 1px solid var(--border);
-  color: var(--muted);
+  color: var(--fg);
   border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 0.85rem;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  font-family: inherit;
   cursor: pointer;
 }
 
-.app-theme-toggle:hover {
-  background: var(--row-hover);
-  color: var(--fg);
+.app-theme-select:hover {
+  border-color: var(--accent);
+}
+
+.app-theme-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .app-loading,
