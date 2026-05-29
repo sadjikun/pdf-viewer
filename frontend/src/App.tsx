@@ -12,7 +12,11 @@ import type { ViewerHandle } from "./components/Viewer/Viewer";
 const Viewer = lazy(() =>
   import("./components/Viewer/Viewer").then((m) => ({ default: m.Viewer }))
 );
+const MarkdownReader = lazy(() =>
+  import("./components/Reader/MarkdownReader").then((m) => ({ default: m.MarkdownReader }))
+);
 import { findActiveSection, flattenOutline } from "./outline";
+import type { ReaderTheme } from "./components/Reader/MarkdownReader";
 import type { DocResult, LibraryResponse, OutlineNode } from "./types";
 import "./App.css";
 
@@ -86,6 +90,9 @@ function App() {
   const [matchTotal, setMatchTotal] = useState(0);
   const [progressPercent, setProgressPercent] = useState<number | null>(null);
   const [progressMessage, setProgressMessage] = useState("");
+  const [viewMode, setViewMode] = useState<"pdf" | "reader">("pdf");
+  const [readerTheme, setReaderTheme] = useState<ReaderTheme>("reading");
+  const [readerDark, setReaderDark] = useState(true);
   const [library, setLibrary] = useState<LibraryResponse>({
     documents: [],
     processing: [],
@@ -303,6 +310,24 @@ function App() {
         <div className="app-sidebar-header">
           <h2>{TAB_TITLES[tab]}</h2>
           <div className="app-actions">
+            <div className="app-view-toggle" role="group" aria-label="Mode d'affichage">
+              <button
+                type="button"
+                className={viewMode === "pdf" ? "is-active" : ""}
+                aria-pressed={viewMode === "pdf"}
+                onClick={() => setViewMode("pdf")}
+              >
+                PDF
+              </button>
+              <button
+                type="button"
+                className={viewMode === "reader" ? "is-active" : ""}
+                aria-pressed={viewMode === "reader"}
+                onClick={() => setViewMode("reader")}
+              >
+                Lecteur
+              </button>
+            </div>
             <ThemeSelect theme={theme} setTheme={setTheme} />
             <a
               className="app-action"
@@ -380,18 +405,32 @@ function App() {
         )}
       </aside>
       <main className="app-main">
-        <Suspense fallback={<p className="viewer-msg">Chargement du viewer…</p>}>
-          <Viewer
-            ref={viewerRef}
-            url={pdfUrl(doc.doc_id)}
-            pages={doc.pages}
-            figures={doc.figures}
-            searchQuery={query}
-            activeMatchIndex={matchIndex}
-            onPageChange={handlePageChange}
-            onFigureClick={setFigureIdx}
-            onMatchCountChange={setMatchTotal}
-          />
+        <Suspense fallback={<p className="viewer-msg">Chargement…</p>}>
+          {viewMode === "reader" ? (
+            <MarkdownReader
+              docId={doc.doc_id}
+              outline={doc.outline}
+              theme={readerTheme}
+              onThemeChange={setReaderTheme}
+              appTheme={theme}
+              isDark={readerDark}
+              onDarkChange={setReaderDark}
+              onPageChange={handlePageChange}
+              searchQuery={query}
+            />
+          ) : (
+            <Viewer
+              ref={viewerRef}
+              url={pdfUrl(doc.doc_id)}
+              pages={doc.pages}
+              figures={doc.figures}
+              searchQuery={query}
+              activeMatchIndex={matchIndex}
+              onPageChange={handlePageChange}
+              onFigureClick={setFigureIdx}
+              onMatchCountChange={setMatchTotal}
+            />
+          )}
         </Suspense>
       </main>
       {current && (

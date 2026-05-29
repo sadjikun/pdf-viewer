@@ -10,10 +10,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "katex": "^0.16.47",
     "pdfjs-dist": "5.4.296",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "react-pdf": "^10.4.1"
+    "react-markdown": "^10.1.0",
+    "react-pdf": "^10.4.1",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
