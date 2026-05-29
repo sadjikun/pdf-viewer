@@ -3,7 +3,6 @@ Double-clic → splash → démarre backend+frontend → charge l'app.
 Fermer la fenêtre quitte l'application (et arrête les serveurs).
 """
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -111,11 +110,11 @@ def main() -> None:
                 "Ferme la fenêtre et réessaie."
             ))
 
-    def on_closed() -> None:
-        threading.Thread(target=mgr.stop, daemon=True).start()
-
-    window.events.closed += on_closed
+    # webview.start() blocks until the window is closed, then returns. Stop the
+    # servers SYNCHRONOUSLY here — doing it in a daemon thread on the 'closed'
+    # event races the process exit and can orphan uvicorn/node (invariant I-1).
     webview.start(boot, gui="edgechromium")
+    mgr.stop()
 
 
 if __name__ == "__main__":
