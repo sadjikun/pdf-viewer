@@ -92,3 +92,21 @@ export interface LibraryResponse {
   failed: LibraryFailure[];
   total: number;
 }
+
+export interface StoredHighlight {
+  key: string;
+  color: string;
+  text: string;
+  section: string;        // section[data-sid], "" if unknown (legacy)
+  sectionTitle: string;   // derived heading text, "" if unknown
+  page: number;           // nearest preceding .pdf-page-marker, 0 if unknown
+  prefix?: string;        // up to 30 chars before text (disambiguation)
+  suffix?: string;        // up to 30 chars after text
+}
+
+export interface AnnotationStore {
+  version: number;
+  highlights: StoredHighlight[];
+  notes: Record<string, string>;  // key → note text
+  saved_at: number;               // ms epoch, server-stamped
+}
