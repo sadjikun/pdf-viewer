@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
+import { ApiError, getDocStatus, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
 import { LoadingDocling } from "./components/Loading/LoadingDocling";
@@ -54,7 +54,54 @@ function App() {
   const [query, setQuery] = useState("");
   const [matchIndex, setMatchIndex] = useState(0);
   const [matchTotal, setMatchTotal] = useState(0);
+  const [progressPercent, setProgressPercent] = useState<number | null>(null);
+  const [progressMessage, setProgressMessage] = useState("");
   const viewerRef = useRef<ViewerHandle>(null);
+  const pollRef = useRef<number | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current != null) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  // Arrête le polling si le composant est démonté
+  useEffect(() => stopPolling, [stopPolling]);
+
+  const startPolling = useCallback(
+    (docId: string) => {
+      stopPolling();
+      pollRef.current = window.setInterval(async () => {
+        try {
+          const st = await getDocStatus(docId);
+          if (st.status === "ready") {
+            stopPolling();
+            const result = await getResult(docId);
+            setDoc(result);
+            localStorage.setItem(LS_KEY, docId);
+            setLoading(false);
+            setProgressPercent(null);
+          } else if (st.status === "processing") {
+            setProgressPercent(st.progress ?? 0);
+            setProgressMessage(st.message ?? "");
+          } else if (st.status === "failed") {
+            stopPolling();
+            setError(st.error ?? "Échec du traitement.");
+            setLoading(false);
+            setProgressPercent(null);
+          }
+          // "not_found" : transitoire juste après le lancement → on continue à poller
+        } catch (e) {
+          stopPolling();
+          setError(e instanceof Error ? e.message : "Erreur de suivi du traitement.");
+          setLoading(false);
+          setProgressPercent(null);
+        }
+      }, 1500);
+    },
+    [stopPolling],
+  );
 
   useEffect(() => {
     const lastId = localStorage.getItem(LS_KEY);
@@ -70,15 +117,25 @@ function App() {
     setDoc(null);
     setActiveId(null);
     setFigureIdx(null);
+    setProgressPercent(null);
+    setProgressMessage("");
     try {
       const res = await processPdf(file);
-      setDoc(res);
-      localStorage.setItem(LS_KEY, res.doc_id);
+      if ("status" in res && res.status === "processing") {
+        // Traitement lancé en arrière-plan → suivi par polling
+        setProgressPercent(res.progress ?? 0);
+        setProgressMessage(res.message ?? "");
+        startPolling(res.doc_id);
+      } else {
+        // Cache hit → résultat complet immédiat
+        setDoc(res as DocResult);
+        localStorage.setItem(LS_KEY, res.doc_id);
+        setLoading(false);
+      }
     } catch (e) {
       if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
       else if (e instanceof Error) setError(e.message);
       else setError("Erreur inconnue.");
-    } finally {
       setLoading(false);
     }
   };
@@ -105,10 +162,13 @@ function App() {
   };
 
   const reset = () => {
+    stopPolling();
     setDoc(null);
     setError(null);
     setActiveId(null);
     setFigureIdx(null);
+    setLoading(false);
+    setProgressPercent(null);
     localStorage.removeItem(LS_KEY);
   };
 
@@ -126,7 +186,7 @@ function App() {
             {theme === "dark" ? "☀" : "☾"}
           </button>
         </header>
-        {loading && <LoadingDocling />}
+        {loading && <LoadingDocling progress={progressPercent} message={progressMessage} />}
         {error && <div className="app-error">{error}</div>}
         {!loading && <UploadZone onFile={handleFile} disabled={loading} />}
       </div>

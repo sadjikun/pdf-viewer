@@ -15,7 +15,14 @@ function fmt(s: number): string {
   return `${m}m ${s % 60}s`;
 }
 
-export function LoadingDocling() {
+interface LoadingDoclingProps {
+  /** Progression réelle 0–100 venant du backend. Si null/undefined → stages temporels. */
+  progress?: number | null;
+  /** Message d'étape venant du backend. */
+  message?: string;
+}
+
+export function LoadingDocling({ progress, message }: LoadingDoclingProps = {}) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -23,12 +30,26 @@ export function LoadingDocling() {
     return () => clearInterval(t);
   }, []);
 
-  const stage = STAGES.find((s) => elapsed < s.until)!;
+  const hasProgress = progress != null;
+  const label = hasProgress && message
+    ? message
+    : STAGES.find((s) => elapsed < s.until)!.label;
 
   return (
     <div className="loading-docling">
       <div className="spinner" aria-hidden="true" />
-      <p className="loading-stage">{stage.label}</p>
+      <p className="loading-stage">{label}</p>
+      {hasProgress && (
+        <div
+          className="loading-progress"
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div className="loading-progress-bar" style={{ width: `${progress}%` }} />
+        </div>
+      )}
       <p className="loading-elapsed">
         Temps écoulé : <strong>{fmt(elapsed)}</strong>
       </p>
