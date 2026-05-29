@@ -6,7 +6,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import katex from "katex";
 import { htmlUrl, htmlManifestUrl, htmlPartUrl, markdownUrl, API_BASE, getAnnotations, saveAnnotations, ficheUrl } from "../../api";
-import type { HtmlManifestEntry, OutlineNode, Figure, AnnotationStore, StoredHighlight } from "../../types";
+import type { HtmlManifestEntry, OutlineNode, Figure, AnnotationStore } from "../../types";
 import { FigureOverlay } from "../Figure/FigureOverlay";
 import "./MarkdownReader.css";
 import "katex/dist/katex.min.css";
@@ -79,7 +79,8 @@ const cleanPdfTitle = (title?: string) => {
 
 // ── HTML parsing ──────────────────────────────────────────────────────────────
 
-function sectionizeHtml(
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper exported for unit tests, not a component
+export function sectionizeHtml(
   raw: string,
   outline: OutlineNode[] = [],
   docFilename?: string,
@@ -279,10 +280,11 @@ function sectionizeHtml(
         if (firstEl.tagName === "FIGURE" && !firstEl.querySelector("figcaption")) {
           const img = firstEl.querySelector("img");
           const src = img?.getAttribute("src") ?? "";
-          if (src.startsWith("data:image/")) startIdx++; // skip raster
+          // FIX-035: rasters are de-embedded to /html-image/ URLs → match both schemes.
+          if (src.startsWith("data:image/") || src.includes("/html-image/")) startIdx++; // skip raster
         } else if (firstEl.tagName === "IMG") {
           const src = firstEl.getAttribute("src") ?? "";
-          if (src.startsWith("data:image/")) startIdx++; // skip standalone raster
+          if (src.startsWith("data:image/") || src.includes("/html-image/")) startIdx++; // skip standalone raster
         }
       }
       for (let j = startIdx; j < allChildren.length; j++) processNode(allChildren[j] as ChildNode);
@@ -313,10 +315,10 @@ function sectionizeHtml(
               for (const sub of Array.from(cell.childNodes)) processNode(sub as ChildNode);
             }
           } else {
-            // FIX-041: Include images from image-only side cells for cover page (page 1) only.
-            // For other pages, the side cell image is just the full-page PDF screenshot,
-            // which we do NOT want to show in the Reader.
-            if (currentPageNo === 1) {
+            // FIX-041: Include images from image-only side cells for the cover (page 1) ONLY
+            // when the content cell has no extracted text. Otherwise the side image is just the
+            // full-page PDF screenshot, which duplicates the extracted content (TD-014).
+            if (currentPageNo === 1 && !hasText) {
               for (const cell of Array.from(cells)) {
                 if (cell === contentCell) continue;
                 if ((cell.textContent ?? "").trim()) continue; // has text → skip
@@ -403,14 +405,19 @@ function sectionizeHtml(
     const wordCount = captionText.split(/\s+/).filter(Boolean).length;
     if (wordCount === 0) {
       const src = img.getAttribute("src") ?? "";
-      if (!src.startsWith("data:")) return; // external URLs: keep
-      // FIX-011 : supprime uniquement les micro-images (logos, icônes < 10 000 chars).
-      // NE PAS filtrer sur les grandes tailles : les vraies figures de contenu
-      // (captures d'écran, schémas, photos) peuvent dépasser 200 000 chars.
-      // Les rasters pleine-page sont déjà retirés en amont :
-      //   – backend  : _annotate_split_page_divs() PASS 2
-      //   – frontend : firstEl sans figcaption dans chaque docling-page
-      const isLogo = src.length < 10_000;
+      const isEmbedded = src.startsWith("data:");
+      const isDeembedded = src.includes("/html-image/"); // FIX-035 de-embedded images
+      if (!isEmbedded && !isDeembedded) return; // genuine external URLs: keep
+      // FIX-011 : supprime uniquement les micro-images (logos, icônes).
+      // NE PAS filtrer les vraies figures de contenu (captures, schémas, photos).
+      // FIX-035 : les images de-embeddées portent leurs dimensions pixel dans data-w/data-h ;
+      // les images base64 retombent sur la longueur (~10 000 chars ≈ une petite icône).
+      const w = parseInt(img.getAttribute("data-w") ?? "", 10);
+      const h = parseInt(img.getAttribute("data-h") ?? "", 10);
+      const LOGO_MAX_PX = 120;
+      const isLogo = (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0)
+        ? (w <= LOGO_MAX_PX && h <= LOGO_MAX_PX)
+        : (isEmbedded && src.length < 10_000);
       if (isLogo) fig.remove();
     }
   });
@@ -497,7 +504,8 @@ function sectionizeHtml(
     const sectionNos = text.match(/\d+\.\d/g) ?? [];
     if (sectionNos.length < 3) return;
     const split = text.replace(
-      /([A-Za-z\dÀ-ÿ])(\d+\.\d+\s*[A-ZÀ-Ü])/g,
+      // FIX-025: \d+(?:\.\d+)+ matches 2-level (6.1) AND deeper (6.1.1) section numbers.
+      /([A-Za-z\dÀ-ÿ])(\d+(?:\.\d+)+\s*[A-ZÀ-Ü])/g,
       (_m: string, a: string, b: string) => a + "\n" + b,
     );
     if (split === text) return;
@@ -699,9 +707,10 @@ function sectionizeHtml(
     img.removeAttribute("height");
     img.style.removeProperty("width");
     img.style.removeProperty("height");
-    // Pour les PNG base64 : fixer max-width à la largeur naturelle de l'image
-    // → les petites images (logos, schémas) ne s'étirent plus à pleine largeur
-    const pngW = _getPngWidth(img.src);
+    // FIX-035 : les images de-embeddées portent leur largeur naturelle dans data-w ;
+    // les PNG base64 retombent sur le parsing de l'en-tête PNG.
+    const dataW = parseInt(img.getAttribute("data-w") ?? "", 10);
+    const pngW = (Number.isFinite(dataW) && dataW > 0) ? dataW : _getPngWidth(img.src);
     if (pngW && pngW < PAGE_FULL_WIDTH * 0.85) {
       // L'image occupe moins de 85 % de la largeur page → cap à sa taille naturelle
       img.style.maxWidth = `min(${pngW}px, 100%)`;
@@ -718,7 +727,7 @@ function sectionizeHtml(
   root.querySelectorAll("table").forEach((table) => {
     const textLen = (table.textContent ?? "").trim().length;
     if (textLen > 20) return; // a du texte → vraie table, on garde
-    if (table.querySelector("img[src^='data:image/']")) {
+    if (table.querySelector("img[src^='data:image/'], img[src*='/html-image/']")) {
       // Raster pur — retirer la table (et son éventuel wrapper)
       const wrapper = table.closest(".table-wrap, .tw");
       (wrapper ?? table).remove();
@@ -1232,6 +1241,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
   // ── Highlight popover & page mode ─────────────────────────────────────────
   const [showHlPop, setShowHlPop] = useState(false);
+  const [showThemePop, setShowThemePop] = useState(false);
   const [pageMode, setPageMode] = useState(false);
   const [noteText, setNoteText] = useState("");
 
@@ -2801,6 +2811,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   setShowTypoPop(false);
                   setShowTtsPop(false);
                   setShowZoomPop(false);
+                  setShowThemePop(false);
                 }}
                 title="Surlignage"
               >
@@ -2908,6 +2919,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   setShowTypoPop(false);
                   setShowHlPop(false);
                   setShowZoomPop(false);
+                  setShowThemePop(false);
                 }}
                 title="Lecture audio (Text-to-Speech)"
               >
@@ -2997,6 +3009,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                 setShowHlPop(false);
                 setShowTtsPop(false);
                 setShowZoomPop(false);
+                setShowThemePop(false);
               }}
               title="Typographie"
             >
@@ -3050,9 +3063,31 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                     title="Lora / Georgia — lecture longue"
                   >Serif</button>
                 </div>
+              </div>
+            )}
+          </div>
 
-                {/* Reading theme */}
-                <div className="reader-pop-label" style={{ marginTop: "10px" }}>Thème de lecture</div>
+          {/* Reading theme popup (TD-016: own toolbar control, split out of Typography) */}
+          <div className="reader-tbtn-wrap">
+            <button
+              className={`reader-tbtn${showThemePop ? " is-on" : ""}`}
+              onClick={() => {
+                setShowThemePop((v) => !v);
+                setShowTypoPop(false);
+                setShowHlPop(false);
+                setShowTtsPop(false);
+                setShowZoomPop(false);
+              }}
+              title="Thème de lecture"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+              </svg>
+            </button>
+
+            {showThemePop && (
+              <div className="reader-tool-pop">
+                <div className="reader-pop-label">Thème de lecture</div>
                 <div className="reader-theme-grid">
                   {(["cstb", "reading", "article", "report", "interactive"] as ReaderTheme[]).map((tName) => (
                     <button
@@ -3100,6 +3135,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   setShowTypoPop(false);
                   setShowHlPop(false);
                   setShowTtsPop(false);
+                  setShowThemePop(false);
                 }}
                 title="Zoom — cliquer pour les préréglages"
               >

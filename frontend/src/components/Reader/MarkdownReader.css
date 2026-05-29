@@ -1491,7 +1491,7 @@ span.formula-not-decoded::before,
 
 /* 1. t-reading (Minimalist Reader) */
 .t-reading {
-  --max-w: 680px;
+  --max-w: clamp(640px, 72vw, 900px); /* TD-017: adaptatif (était 680px fixe) */
   --fb: Georgia, 'Source Serif 4', serif;
   --lh: 1.85;
 }
@@ -1515,7 +1515,7 @@ span.formula-not-decoded::before,
 
 /* 2. t-article (Tufte Editorial) */
 .t-article {
-  --max-w: 760px;
+  --max-w: clamp(680px, 74vw, 940px); /* TD-017: adaptatif (était 760px fixe) */
   --fb: Georgia, 'Source Serif 4', serif;
 }
 .t-article .reader-doc h2 {
@@ -1536,7 +1536,7 @@ span.formula-not-decoded::before,
 
 /* 3. t-report (Whitepaper Report) */
 .t-report {
-  --max-w: 900px;
+  --max-w: clamp(820px, 82vw, 1120px); /* TD-017: adaptatif (était 900px fixe) */
   --fb: var(--fu); /* Sans-serif */
   --lh: 1.75;
 }
@@ -1556,13 +1556,13 @@ span.formula-not-decoded::before,
 
 /* 4. t-interactive (Interactive Book) */
 .t-interactive {
-  --max-w: 900px;
+  --max-w: clamp(820px, 82vw, 1120px); /* TD-017: adaptatif (était 900px fixe) */
   --fb: var(--fu); /* Sans-serif */
 }
 
 /* 5. t-cstb — layout page A4, pleine largeur (ne pas limiter) */
 .t-cstb {
-  --max-w: 100%;
+  --max-w: clamp(900px, 88vw, 1320px); /* TD-017: largeur adaptative au lieu de 100% (trop large) */
 }
 .t-cstb .reader-content {
   padding: 0;
