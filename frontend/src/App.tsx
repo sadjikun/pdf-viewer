@@ -16,7 +16,7 @@ const MarkdownReader = lazy(() =>
   import("./components/Reader/MarkdownReader").then((m) => ({ default: m.MarkdownReader }))
 );
 import { findActiveSection, flattenOutline } from "./outline";
-import type { ReaderTheme } from "./components/Reader/MarkdownReader";
+import type { ReaderTheme, ReaderHandle } from "./components/Reader/MarkdownReader";
 import type { DocResult, LibraryResponse, OutlineNode } from "./types";
 import "./App.css";
 
@@ -90,9 +90,10 @@ function App() {
   const [matchTotal, setMatchTotal] = useState(0);
   const [progressPercent, setProgressPercent] = useState<number | null>(null);
   const [progressMessage, setProgressMessage] = useState("");
-  const [viewMode, setViewMode] = useState<"pdf" | "reader">("pdf");
+  const [viewMode, setViewMode] = useState<"pdf" | "reader" | "compare">("pdf");
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("reading");
   const [readerDark, setReaderDark] = useState(true);
+  const [splitRatio, setSplitRatio] = useState(0.5); // largeur du panneau PDF en mode compare (0–1)
   const [library, setLibrary] = useState<LibraryResponse>({
     documents: [],
     processing: [],
@@ -101,6 +102,7 @@ function App() {
   });
   const [lastDocId, setLastDocId] = useState<string | null>(() => localStorage.getItem(LS_KEY));
   const viewerRef = useRef<ViewerHandle>(null);
+  const readerRef = useRef<ReaderHandle>(null);
   const pollRef = useRef<number | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -233,6 +235,8 @@ function App() {
   const handleSelect = (node: OutlineNode) => {
     setActiveId(node.id);
     if (node.page != null) viewerRef.current?.scrollToPage(node.page);
+    // En mode Lecteur/Compare, on aligne aussi le Lecteur sur la section cliquée.
+    if (viewMode !== "pdf") readerRef.current?.scrollToSection(node.title);
     setSidebarOpen(false); // ferme le drawer après navigation sur mobile
   };
 
@@ -244,6 +248,31 @@ function App() {
   const handlePageChange = (page: number) => {
     const active = findActiveSection(flatOutline, page);
     if (active && active.id !== activeId) setActiveId(active.id);
+  };
+
+  // Reader → PDF : quand l'utilisateur fait défiler le Lecteur en mode Compare,
+  // le Viewer suit (scroll programmatique, ne reboucle pas).
+  const handleReaderPageChange = (page: number) => {
+    handlePageChange(page);
+    if (viewMode === "compare") viewerRef.current?.scrollToPage(page);
+  };
+
+  // Diviseur draggable du mode Compare : ajuste la largeur relative des deux panneaux.
+  const startDividerDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const container = e.currentTarget.parentElement;
+    if (!container) return;
+    const onMove = (ev: PointerEvent) => {
+      const rect = container.getBoundingClientRect();
+      const ratio = (ev.clientX - rect.left) / rect.width;
+      setSplitRatio(Math.min(0.8, Math.max(0.2, ratio)));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   const reset = () => {
@@ -331,6 +360,14 @@ function App() {
               >
                 Lecteur
               </button>
+              <button
+                type="button"
+                className={viewMode === "compare" ? "is-active" : ""}
+                aria-pressed={viewMode === "compare"}
+                onClick={() => setViewMode("compare")}
+              >
+                Compare
+              </button>
             </div>
             )}
             <ThemeSelect theme={theme} setTheme={setTheme} />
@@ -411,8 +448,47 @@ function App() {
       </aside>
       <main className="app-main">
         <Suspense fallback={<p className="viewer-msg">Chargement…</p>}>
-          {effectiveViewMode === "reader" ? (
+          {effectiveViewMode === "compare" ? (
+            <div className="app-compare">
+              <div className="app-compare-pane" style={{ width: `${splitRatio * 100}%` }}>
+                <Viewer
+                  ref={viewerRef}
+                  url={pdfUrl(doc.doc_id)}
+                  pages={doc.pages}
+                  figures={doc.figures}
+                  searchQuery={query}
+                  activeMatchIndex={matchIndex}
+                  onPageChange={handlePageChange}
+                  onFigureClick={setFigureIdx}
+                  onMatchCountChange={setMatchTotal}
+                />
+              </div>
+              <div
+                className="app-compare-divider"
+                onPointerDown={startDividerDrag}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Redimensionner les panneaux"
+              />
+              <div className="app-compare-pane" style={{ width: `${(1 - splitRatio) * 100}%` }}>
+                <MarkdownReader
+                  ref={readerRef}
+                  docId={doc.doc_id}
+                  outline={doc.outline}
+                  theme={readerTheme}
+                  onThemeChange={setReaderTheme}
+                  appTheme={theme}
+                  isDark={readerDark}
+                  onDarkChange={setReaderDark}
+                  onPageChange={handleReaderPageChange}
+                  compareMode
+                  searchQuery={query}
+                />
+              </div>
+            </div>
+          ) : effectiveViewMode === "reader" ? (
             <MarkdownReader
+              ref={readerRef}
               docId={doc.doc_id}
               outline={doc.outline}
               theme={readerTheme}
@@ -420,7 +496,7 @@ function App() {
               appTheme={theme}
               isDark={readerDark}
               onDarkChange={setReaderDark}
-              onPageChange={handlePageChange}
+              onPageChange={handleReaderPageChange}
               searchQuery={query}
             />
           ) : (

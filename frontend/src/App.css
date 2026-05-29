@@ -105,6 +105,32 @@
   overflow: hidden;
 }
 
+/* Mode Compare : PDF | diviseur | Lecteur côte à côte */
+.app-compare {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.app-compare-pane {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-compare-divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.15s ease;
+  touch-action: none;
+}
+
+.app-compare-divider:hover {
+  background: var(--accent);
+}
+
 .app-header {
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid var(--border);
