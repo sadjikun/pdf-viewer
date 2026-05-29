@@ -522,8 +522,8 @@ def run_latex_ocr(doc_id: str) -> JSONResponse:
     if not result_path.exists():
         raise HTTPException(404, "Document inconnu")
 
-    if ocr.init_latex_ocr() is None:
-        raise HTTPException(503, "pix2tex non installé. Exécutez : pip install pix2tex")
+    if not ocr.latex_engine_available():
+        raise HTTPException(503, "Aucun moteur LaTeX-OCR. Installez : pip install texify (ou pix2tex)")
 
     with open(result_path, encoding="utf-8") as f:
         result = json.load(f)

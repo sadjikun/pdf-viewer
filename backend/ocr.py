@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -85,11 +86,20 @@ else:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LaTeX-OCR (pix2tex) — lazy-loaded, optionnel
+# LaTeX-OCR — moteurs Texify et pix2tex (lazy-loaded, optionnels)
 # ──────────────────────────────────────────────────────────────────────────────
+
+# FORMULA_ENGINE : "texify" | "pix2tex" | "auto" (défaut : Texify si dispo, sinon pix2tex)
+FORMULA_ENGINE = os.environ.get("FORMULA_ENGINE", "auto").strip().lower()
 
 _latex_model = None
 _latex_model_loaded = False
+
+_texify_model = None
+_texify_processor = None
+_texify_loaded = False
+
+_FORMULA_LOCK = threading.Lock()  # sérialise l'inférence (PyTorch non thread-safe)
 
 # Caractères Unicode que KaTeX ne reconnaît pas → équivalents LaTeX
 _UNICODE_TO_LATEX: dict[str, str] = {
@@ -174,14 +184,68 @@ def init_latex_ocr():
     return _latex_model
 
 
-def latex_ocr_figure(img_path: Path) -> str | None:
-    """Extrait du LaTeX depuis une image de figure. None si pix2tex absent/échec.
+def init_texify() -> bool:
+    """Charge le modèle Texify une seule fois (lazy singleton). True si disponible.
 
-    Heuristique : une équation est typiquement large et peu haute ; on saute les
-    images carrées ou très grandes (photos, schémas).
+    Téléchargement HuggingFace ~500 Mo au 1er lancement.
     """
-    model = init_latex_ocr()
-    if model is None:
+    global _texify_model, _texify_processor, _texify_loaded
+    if _texify_loaded:
+        return _texify_model is not None
+    _texify_loaded = True
+    try:
+        from texify.model.model import load_model  # type: ignore
+        from texify.model.processor import load_processor  # type: ignore
+        log.info("Texify : chargement du modèle (~500 Mo)...")
+        _texify_processor = load_processor()
+        _texify_model = load_model()
+        log.info("Texify chargé")
+        return True
+    except ImportError:
+        log.info("Texify non installé (pip install texify)")
+        return False
+    except Exception as e:
+        log.warning("Chargement Texify échoué : %s", e)
+        return False
+
+
+def _resolve_engine() -> str:
+    """Retourne 'texify', 'pix2tex' ou 'none' selon FORMULA_ENGINE et les deps installées."""
+    if FORMULA_ENGINE == "texify":
+        return "texify" if init_texify() else "none"
+    if FORMULA_ENGINE == "pix2tex":
+        return "pix2tex" if init_latex_ocr() is not None else "none"
+    # auto : Texify en priorité, repli pix2tex
+    if init_texify():
+        return "texify"
+    return "pix2tex" if init_latex_ocr() is not None else "none"
+
+
+def latex_engine_available() -> bool:
+    """True si au moins un moteur LaTeX-OCR est disponible (pour le check 503)."""
+    return _resolve_engine() != "none"
+
+
+def _texify_predict(img) -> str | None:
+    """LaTeX d'une image via Texify (inference unitaire)."""
+    try:
+        from texify.inference import batch_inference  # type: ignore
+        with _FORMULA_LOCK:  # les deux moteurs partagent PyTorch (non thread-safe)
+            raw = batch_inference([img], _texify_model, _texify_processor)
+        return sanitize_latex((raw[0] or "").strip()) if raw else None
+    except Exception as e:
+        log.warning("Texify inference échouée : %s", e)
+        return None
+
+
+def latex_ocr_figure(img_path: Path) -> str | None:
+    """Extrait du LaTeX depuis une image de figure via le moteur résolu (Texify/pix2tex).
+
+    None si aucun moteur dispo ou échec. Heuristique : une équation est typiquement
+    large et peu haute ; on saute les images carrées ou très grandes (photos, schémas).
+    """
+    engine = _resolve_engine()
+    if engine == "none":
         return None
 
     try:
@@ -190,8 +254,8 @@ def latex_ocr_figure(img_path: Path) -> str | None:
         w, h = img.size
         if h > w * 0.6 or w * h > 1_000_000:
             return None
-        latex = _predict(model, img)
-        if not latex or len(latex) < 3 or len(latex) > 600:
+        latex = _texify_predict(img) if engine == "texify" else _predict(_latex_model, img)
+        if not latex or len(latex) < 3 or len(latex) > 800:
             return None
         return latex.strip()
     except Exception:
