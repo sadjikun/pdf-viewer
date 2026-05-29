@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guide d'implémentation — pdf-viewer</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --bg2: #161b22;
+      --bg3: #1e2430;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --accent3: #f0883e;
+      --accent4: #bc8cff;
+      --danger: #f85149;
+      --code-bg: #161b22;
+      --sidebar-w: 280px;
+    }
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --bg2: #f6f8fa;
+      --bg3: #eef1f5;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #656d76;
+      --code-bg: #f6f8fa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      min-height: 100vh;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.25s ease;
+    }
+    #sidebar-header {
+      padding: 20px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #sidebar-header .logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent4));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    #sidebar-header h1 { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
+    #sidebar-header p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    #search-box {
+      margin: 12px 12px 6px;
+      padding: 8px 12px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      width: calc(100% - 24px);
+    }
+    #search-box:focus { border-color: var(--accent); }
+    #search-box::placeholder { color: var(--muted); }
+
+    #toc { padding: 8px 0 20px; }
+    .toc-item {
+      display: block;
+      padding: 5px 16px;
+      font-size: 12.5px;
+      color: var(--muted);
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toc-item:hover { color: var(--text); background: var(--bg3); }
+    .toc-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(88,166,255,.08); }
+    .toc-item.lvl1 { font-weight: 600; font-size: 13px; color: var(--text); padding-top: 10px; }
+    .toc-item.lvl2 { padding-left: 28px; }
+    .toc-item.lvl3 { padding-left: 42px; font-size: 12px; }
+
+    /* ── MAIN ── */
+    #main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── TOPBAR ── */
+    #topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #topbar .breadcrumb { font-size: 13px; color: var(--muted); flex: 1; }
+    #topbar .breadcrumb span { color: var(--text); }
+
+    .btn {
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .btn:hover { background: var(--bg3); border-color: var(--accent); }
+    #toggle-sidebar { display: none; }
+
+    /* ── CONTENT ── */
+    #content {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 40px 80px;
+      width: 100%;
+    }
+
+    /* ── SECTIONS ── */
+    .section {
+      margin-bottom: 56px;
+      scroll-margin-top: 60px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-badge {
+      background: linear-gradient(135deg, var(--accent), var(--accent4));
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+    h2.section-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    h3 {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 28px 0 12px;
+      padding-left: 12px;
+      border-left: 3px solid var(--accent);
+    }
+    h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent3);
+      margin: 20px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    p { margin-bottom: 12px; color: var(--text); }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(135deg, rgba(88,166,255,.08), rgba(188,140,255,.08));
+      border: 1px solid rgba(88,166,255,.2);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 40px;
+    }
+    .hero h1 {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent4));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+    .hero p { color: var(--muted); margin: 0; font-size: 14px; }
+    .hero-meta {
+      display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap;
+    }
+    .hero-tag {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .hero-tag span { color: var(--text); font-weight: 500; }
+
+    /* ── CODE ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 12px 0 16px;
+      position: relative;
+    }
+    pre .copy-btn {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: var(--muted);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    pre:hover .copy-btn { opacity: 1; }
+    pre .copy-btn:hover { color: var(--text); }
+    code {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.88em;
+    }
+    p code, li code, td code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      color: var(--accent3);
+    }
+
+    /* Syntax colors */
+    .kw { color: #ff7b72; }
+    .fn { color: #d2a8ff; }
+    .str { color: #a5d6ff; }
+    .cm { color: #8b949e; font-style: italic; }
+    .num { color: #79c0ff; }
+    .py { color: #ffa657; }
+
+    /* ── TABLES ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13.5px;
+    }
+    th {
+      background: var(--bg3);
+      text-align: left;
+      padding: 10px 14px;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 2px solid var(--border);
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-blue  { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid rgba(88,166,255,.3); }
+    .badge-green { background: rgba(63,185,80,.15); color: var(--accent2); border: 1px solid rgba(63,185,80,.3); }
+    .badge-orange{ background: rgba(240,136,62,.15); color: var(--accent3); border: 1px solid rgba(240,136,62,.3); }
+    .badge-purple{ background: rgba(188,140,255,.15); color: var(--accent4); border: 1px solid rgba(188,140,255,.3); }
+    .badge-red   { background: rgba(248,81,73,.15); color: var(--danger); border: 1px solid rgba(248,81,73,.3); }
+
+    /* ── CALLOUT ── */
+    .callout {
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+      display: flex;
+      gap: 12px;
+      font-size: 14px;
+    }
+    .callout-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .callout-info    { background: rgba(88,166,255,.08); border-left: 3px solid var(--accent); }
+    .callout-warn    { background: rgba(240,136,62,.08); border-left: 3px solid var(--accent3); }
+    .callout-success { background: rgba(63,185,80,.08); border-left: 3px solid var(--accent2); }
+    .callout-danger  { background: rgba(248,81,73,.08); border-left: 3px solid var(--danger); }
+
+    /* ── CARDS GRID ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .card-icon { font-size: 24px; margin-bottom: 8px; }
+    .card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .card-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* ── ARCHITECTURE DIAGRAM ── */
+    .arch-diagram {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin: 16px 0;
+    }
+    .arch-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 8px 0;
+    }
+    .arch-box {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: center;
+      min-width: 120px;
+    }
+    .arch-box.browser { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.06); }
+    .arch-box.backend { border-color: var(--accent2); color: var(--accent2); background: rgba(63,185,80,.06); }
+    .arch-box.engine  { border-color: var(--accent3); color: var(--accent3); background: rgba(240,136,62,.06); }
+    .arch-arrow { text-align: center; color: var(--muted); font-size: 18px; margin: 4px 0; }
+    .arch-label { font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px; }
+
+    /* ── FLOW ── */
+    .flow {
+      position: relative;
+      padding: 16px 0;
+    }
+    .flow-step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 4px;
+      align-items: flex-start;
+    }
+    .flow-num {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent4));
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .flow-content { flex: 1; }
+    .flow-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .flow-desc { font-size: 13px; color: var(--muted); }
+    .flow-connector {
+      width: 2px;
+      height: 24px;
+      background: var(--border);
+      margin-left: 12px;
+    }
+
+    /* ── FIX TABLE ── */
+    .fix-row td:first-child { font-family: monospace; }
+    .fix-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(248,81,73,.12);
+      color: var(--danger);
+      border: 1px solid rgba(248,81,73,.25);
+      font-family: monospace;
+      white-space: nowrap;
+    }
+
+    /* ── COLLAPSIBLE ── */
+    details {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+    summary {
+      padding: 12px 16px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before {
+      content: "▶";
+      font-size: 10px;
+      color: var(--muted);
+      transition: transform 0.2s;
+    }
+    details[open] summary::before { transform: rotate(90deg); }
+    summary:hover { background: var(--bg3); }
+    details > :not(summary) { padding: 0 16px 16px; }
+
+    /* ── ENV TABLE ── */
+    .env-table td:first-child code { color: var(--accent4); }
+
+    /* ── PROGRESS INDICATOR ── */
+    #progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent4));
+      transition: width 0.1s;
+      z-index: 999;
+    }
+
+    /* ── SEARCH HIGHLIGHT ── */
+    .highlight { background: rgba(255,200,0,.3); border-radius: 2px; }
+
+    /* ── BACK TO TOP ── */
+    #back-top {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 40px; height: 40px;
+      font-size: 18px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    }
+    #back-top.visible { opacity: 1; }
+    #back-top:hover { transform: translateY(-2px); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      #sidebar {
+        position: fixed;
+        left: 0; top: 0;
+        z-index: 200;
+        transform: translateX(-100%);
+      }
+      #sidebar.open { transform: translateX(0); }
+      #toggle-sidebar { display: flex !important; }
+      #content { padding: 24px 20px 60px; }
+      #topbar { padding: 10px 16px; }
+      .cards { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 500px) {
+      .cards { grid-template-columns: 1fr; }
+      .arch-row { flex-direction: column; }
+    }
+
+    /* ── LIST ── */
+    ul, ol { padding-left: 20px; margin-bottom: 12px; }
+    li { margin-bottom: 4px; }
+    li > code { font-size: 12px; }
+
+    /* Divider */
+    hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+    /* Command block */
+    .cmd-block {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      margin: 8px 0;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .cmd-block .cmd-prefix { color: var(--accent2); font-weight: 700; }
+  </style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <div class="logo">📄</div>
+    <div>
+      <h1>pdf-viewer</h1>
+      <p>Guide d'implémentation</p>
+    </div>
+  </div>
+  <input id="search-box" type="search" placeholder="🔍  Rechercher…" />
+  <div id="toc">
+    <a class="toc-item lvl1 active" href="#s1">1. Vue d'ensemble</a>
+    <a class="toc-item lvl1" href="#s2">2. Structure du projet</a>
+    <a class="toc-item lvl1" href="#s3">3. Backend — PDFs</a>
+    <a class="toc-item lvl2" href="#s31">3.1 Natif vs Scanné</a>
+    <a class="toc-item lvl2" href="#s32">3.2 Fast path</a>
+    <a class="toc-item lvl2" href="#s33">3.3 Docling path</a>
+    <a class="toc-item lvl2" href="#s34">3.4 Formules LaTeX</a>
+    <a class="toc-item lvl2" href="#s35">3.5 Figures</a>
+    <a class="toc-item lvl2" href="#s36">3.6 PDFs problématiques</a>
+    <a class="toc-item lvl1" href="#s4">4. API REST</a>
+    <a class="toc-item lvl1" href="#s5">5. Cache &amp; persistance</a>
+    <a class="toc-item lvl1" href="#s6">6. Frontend</a>
+    <a class="toc-item lvl2" href="#s61">6.1 App.tsx</a>
+    <a class="toc-item lvl2" href="#s62">6.2 PDF Viewer</a>
+    <a class="toc-item lvl2" href="#s63">6.3 Reader</a>
+    <a class="toc-item lvl2" href="#s64">6.4 Mode Comparer</a>
+    <a class="toc-item lvl1" href="#s7">7. Flux de données</a>
+    <a class="toc-item lvl1" href="#s8">8. Invariants critiques</a>
+    <a class="toc-item lvl1" href="#s9">9. Variables d'env</a>
+    <a class="toc-item lvl1" href="#s10">10. Lancer le projet</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <button class="btn" id="toggle-sidebar" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+    <div class="breadcrumb">pdf-viewer / <span>Guide d'implémentation</span></div>
+    <button class="btn" id="theme-btn" onclick="toggleTheme()">🌙 Thème</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- HERO -->
+    <div class="hero">
+      <h1>Guide d'implémentation</h1>
+      <p>Document de référence technique pour les développeurs rejoignant le projet ou souhaitant comprendre l'architecture.</p>
+      <div class="hero-meta">
+        <span class="hero-tag">Backend <span>Python 3.13 + FastAPI</span></span>
+        <span class="hero-tag">Frontend <span>React 19 + TypeScript</span></span>
+        <span class="hero-tag">ML <span>Docling 2.92</span></span>
+        <span class="hero-tag">Mis à jour <span>2026-05-21</span></span>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §1 VUE D'ENSEMBLE -->
+    <div class="section" id="s1">
+      <div class="section-header">
+        <span class="section-badge">01</span>
+        <h2 class="section-title">Vue d'ensemble</h2>
+      </div>
+
+      <p><strong>pdf-viewer</strong> est un lecteur PDF local <em>self-hosted</em>. Il n'y a pas de cloud, pas d'authentification, pas de base de données. L'application tourne entièrement sur la machine de l'utilisateur.</p>
+
+      <div class="arch-diagram">
+        <div class="arch-label" style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:12px;">ARCHITECTURE GLOBALE</div>
+        <div class="arch-row">
+          <div class="arch-box browser">📄 PDF.js<br><small>Viewer</small></div>
+          <div class="arch-box browser">📖 Reader HTML<br><small>Mode livre</small></div>
+          <div class="arch-box browser">🔀 Comparer<br><small>PDF + Reader</small></div>
+        </div>
+        <div class="arch-arrow">↕ REST / JSON</div>
+        <div class="arch-row">
+          <div class="arch-box backend" style="min-width:380px;">
+            ⚡ FastAPI — localhost:8000<br>
+            <small style="color:var(--muted)">POST /process · GET /doc/{id}/pdf · GET /doc/{id}/html</small>
+          </div>
+        </div>
+        <div class="arch-arrow">↕</div>
+        <div class="arch-row">
+          <div class="arch-box engine">🔵 pypdfium2<br><small>PDFs natifs</small></div>
+          <div class="arch-box engine">🤖 Docling + RapidOCR<br><small>PDFs scannés</small></div>
+          <div class="arch-box engine">∑ KaTeX<br><small>Formules</small></div>
+        </div>
+      </div>
+
+      <h3>Stack technique</h3>
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">🐍</div>
+          <div class="card-title">Backend</div>
+          <div class="card-desc">Python 3.13, FastAPI, uvicorn</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">🤖</div>
+          <div class="card-title">Extraction ML</div>
+          <div class="card-desc">Docling 2.92 + RapidOCR (embarqué)</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">📄</div>
+          <div class="card-title">Extraction natif</div>
+          <div class="card-desc">pypdfium2 (libpdfium Google)</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">⚛️</div>
+          <div class="card-title">Frontend</div>
+          <div class="card-desc">React 19, TypeScript, Vite</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">📑</div>
+          <div class="card-title">Rendu PDF</div>
+          <div class="card-desc">react-pdf (PDF.js)</div>
+        </div>
+        <div class="card">
+          <div class="card-icon">∑</div>
+          <div class="card-title">Formules</div>
+          <div class="card-desc">KaTeX auto-render</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §2 STRUCTURE -->
+    <div class="section" id="s2">
+      <div class="section-header">
+        <span class="section-badge">02</span>
+        <h2 class="section-title">Structure du projet</h2>
+      </div>
+
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><span class="cm">pdf-viewer/</span>
+├── CLAUDE.md                    <span class="cm">← Entry point agent (lire en premier)</span>
+├── memory/                      <span class="cm">← Wiki technique persistant</span>
+│   ├── INDEX.md
+│   ├── LOG.md
+│   ├── fixes-registry.md
+│   └── …13 pages
+│
+├── backend/
+│   ├── <span class="py">main.py</span>                  <span class="cm">← API FastAPI (endpoints)</span>
+│   ├── <span class="py">pipeline.py</span>              <span class="cm">← Extraction PDF → JSON</span>
+│   ├── <span class="py">benchmark.py</span>             <span class="cm">← Comparaison outils OCR</span>
+│   └── cache/                   <span class="cm">← Résultats mis en cache</span>
+│       └── {doc_id}/
+│           ├── source.pdf
+│           ├── result.json
+│           ├── result.html
+│           ├── result.md
+│           ├── cleaned.pdf      <span class="cm">← si JPEG2000/ICC invalide</span>
+│           └── figures/
+│               ├── f_0.png
+│               └── …
+│
+└── frontend/
+    ├── src/
+    │   ├── <span class="fn">App.tsx</span>              <span class="cm">← Shell principal</span>
+    │   ├── <span class="fn">api.ts</span>               <span class="cm">← Client HTTP</span>
+    │   ├── <span class="fn">types.ts</span>             <span class="cm">← Types TypeScript</span>
+    │   └── components/
+    │       ├── Reader/
+    │       ├── Viewer/          <span class="cm">← react-pdf</span>
+    │       ├── Outline/         <span class="cm">← Arbre sidebar</span>
+    │       └── Gallery/         <span class="cm">← Galerie figures</span>
+    └── index.html</pre>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §3 BACKEND -->
+    <div class="section" id="s3">
+      <div class="section-header">
+        <span class="section-badge">03</span>
+        <h2 class="section-title">Backend — Traitement des PDFs</h2>
+      </div>
+
+      <p>Le point d'entrée est <code>pipeline.py::convertir_pdf(pdf_path, output_dir, progress_callback)</code>.</p>
+
+      <!-- §3.1 -->
+      <div id="s31" style="scroll-margin-top:60px">
+        <h3>3.1 Détection natif vs scanné</h3>
+
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><span class="kw">def</span> <span class="fn">has_native_text</span>(pdf_path: Path) -> <span class="py">bool</span>:
+    <span class="cm">"""pypdfium2 extrait le texte des 3 premières pages.
+    Si > 100 caractères : PDF natif (texte sélectionnable).
+    Sinon : PDF scanné (images de pages).
+    """</span></pre>
+
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Outil</th><th>Durée</th><th>Résultat</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-blue">Natif</span></td>
+              <td><code>pypdfium2</code></td>
+              <td><span class="badge badge-green">~1s</span></td>
+              <td>TOC + texte + regex titres</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-orange">Scanné</span></td>
+              <td><code>Docling + RapidOCR</code></td>
+              <td><span class="badge badge-red">25–80s</span></td>
+              <td>ML complet (layout, formules, tables)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- §3.2 -->
+      <div id="s32" style="scroll-margin-top:60px">
+        <h3>3.2 Fast path (PDFs natifs)</h3>
+        <p>Pour les PDFs avec texte sélectionnable, on évite Docling (trop lent) :</p>
+
+        <div class="flow">
+          <div class="flow-step">
+            <div class="flow-num">1</div>
+            <div class="flow-content">
+              <div class="flow-title">Extraire le TOC natif pypdfium2</div>
+              <div class="flow-desc"><code>_toc_vers_outline(toc)</code> → liste plate → <code>_construire_outline()</code> → arbre</div>
+            </div>
+          </div>
+          <div class="flow-connector"></div>
+          <div class="flow-step">
+            <div class="flow-num">2</div>
+            <div class="flow-content">
+              <div class="flow-title">Si TOC vide → détecter titres par regex</div>
+              <div class="flow-desc"><code>_outline_depuis_texte(page_texts)</code></div>
+            </div>
+          </div>
+          <div class="flow-connector"></div>
+          <div class="flow-step">
+            <div class="flow-num">3</div>
+            <div class="flow-content">
+              <div class="flow-title">Compléter le TOC avec les annexes absentes (FIX-003)</div>
+              <div class="flow-desc">Chercher "Attachment A", "Appendix B" etc. dans le texte</div>
+            </div>
+          </div>
+        </div>
+
+        <h4>Logique de détection de titres — <code>_est_titre_section</code></h4>
+        <ul>
+          <li>Format <code>X.Y</code> minimum (au moins un point dans le numéro) OU <code>Chapter N:</code> OU <code>Annex A</code></li>
+          <li>Texte après le numéro : ≥ 10 caractères, ≥ 50 % lettres, ≥ 1 mot de 3+ lettres</li>
+          <li>Pas de symboles mathématiques (pour ne pas confondre équations et titres)</li>
+        </ul>
+      </div>
+
+      <!-- §3.3 -->
+      <div id="s33" style="scroll-margin-top:60px">
+        <h3>3.3 Docling path (PDFs scannés)</h3>
+        <p>Docling est un framework ML d'IBM Research qui combine :</p>
+        <ul>
+          <li><strong>RapidOCR</strong> (embarqué, sans dépendance système) pour le texte</li>
+          <li><strong>TableFormer</strong> pour l'extraction de tableaux structurés</li>
+          <li><strong>CodeFormulaV2</strong> (optionnel) pour les formules LaTeX</li>
+        </ul>
+
+        <h4>Boucle par tranches de 10 pages (<code>BATCH_SIZE = 10</code>)</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><span class="kw">for</span> batch_start <span class="kw">in</span> <span class="fn">range</span>(<span class="num">0</span>, n_pages, BATCH_SIZE):
+    <span class="cm"># 1. Découper le PDF en une tranche temporaire</span>
+    tranche_path = <span class="fn">_split_pdf</span>(pdf_path, batch_start, batch_end, tmp_dir)
+
+    <span class="cm"># 2. Lancer Docling sur la tranche</span>
+    doc = converter.<span class="fn">convert</span>(<span class="fn">str</span>(tranche_path)).document
+
+    <span class="cm"># 3. Pix2tex fallback sur les formules non décodées</span>
+    <span class="kw">if</span> PIX2TEX_FALLBACK:
+        <span class="fn">_appliquer_pix2tex</span>(doc)
+
+    <span class="cm"># 4. Extraire sections, HTML, Markdown, figures, tables</span>
+    docling_sections.<span class="fn">extend</span>(<span class="fn">_extraire_sections_doc</span>(doc, …))
+    all_html_parts.<span class="fn">append</span>(doc.<span class="fn">export_to_html</span>(image_mode=EMBEDDED))
+    all_figures.<span class="fn">extend</span>(<span class="fn">_extraire_figures_doc</span>(doc, …))
+    all_tables.<span class="fn">extend</span>(<span class="fn">_extraire_tables_doc</span>(doc, …))
+
+    <span class="cm"># 5. Si la tranche échoue → retry page par page</span>
+    <span class="kw">except</span> Exception:
+        <span class="kw">for</span> single_page <span class="kw">in</span> <span class="fn">range</span>(batch_start, batch_end):
+            <span class="cm"># même logique, page unique</span></pre>
+
+        <div class="callout callout-info">
+          <span class="callout-icon">ℹ️</span>
+          <div>La stratégie de retry page-par-page garantit qu'une page corrompue n'élimine pas les 9 autres de la tranche.</div>
+        </div>
+
+        <details>
+          <summary>Configuration Docling</summary>
+          <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><span class="fn">PdfPipelineOptions</span>(
+    generate_picture_images = <span class="kw">True</span>,   <span class="cm"># extraire images des figures</span>
+    images_scale            = <span class="num">2.0</span>,    <span class="cm"># 144 DPI (vs 72 DPI par défaut)</span>
+    generate_page_images    = <span class="kw">True</span>,
+    do_formula_enrichment   = FORMULA_ENRICHMENT,  <span class="cm"># CodeFormulaV2</span>
+)</pre>
+        </details>
+
+        <details>
+          <summary>Post-traitements HTML (dans l'ordre)</summary>
+          <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">html = <span class="fn">_extract_body</span>(raw_html)           <span class="cm"># garde uniquement le &lt;body&gt;</span>
+html = <span class="fn">_clean_html_spaces</span>(html)          <span class="cm"># normalise les espaces</span>
+html = <span class="fn">_fix_formula_html</span>(html)            <span class="cm"># patch classes formules</span>
+html = <span class="fn">_strip_page_headers_footers</span>(html)  <span class="cm"># supprime numéros de page</span></pre>
+        </details>
+      </div>
+
+      <!-- §3.4 -->
+      <div id="s34" style="scroll-margin-top:60px">
+        <h3>3.4 Pipeline formules LaTeX</h3>
+        <p>Les formules traversent jusqu'à deux passes avant rendu.</p>
+
+        <h4>Passe 1 — CodeFormulaV2 (Docling built-in)</h4>
+        <p>Activé avec <code>FORMULA_ENRICHMENT=1</code>. Docling utilise un modèle Transformers (~1-2 GB HuggingFace, téléchargé une seule fois) pour décoder les formules lors de l'extraction.</p>
+
+        <h4>Passe 2 — pix2tex (LaTeX-OCR, fallback)</h4>
+        <p>Activé avec <code>PIX2TEX_FALLBACK=1</code> (défaut). S'applique après Docling aux items encore "not decoded" :</p>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><span class="kw">for</span> item, _lvl <span class="kw">in</span> doc.<span class="fn">iterate_items</span>():
+    <span class="kw">if</span> <span class="str">"formula"</span> <span class="kw">not in</span> label_str: <span class="kw">continue</span>
+    <span class="kw">if</span> <span class="str">"not decoded"</span> <span class="kw">not in</span> item.text.<span class="fn">lower</span>(): <span class="kw">continue</span>  <span class="cm"># déjà décodé → skip</span>
+
+    img = item.<span class="fn">get_image</span>(doc)       <span class="cm"># image PNG de la formule</span>
+    latex = <span class="fn">_latex_model</span>(img)       <span class="cm"># ViT → LaTeX string</span>
+
+    <span class="kw">if</span> latex <span class="kw">and</span> <span class="num">3</span> <= <span class="fn">len</span>(latex) <= <span class="num">600</span>:
+        item.text = <span class="fn">f</span><span class="str">"${latex.strip()}$"</span></pre>
+
+        <h4>Rendu — KaTeX (frontend)</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="fn">renderMathInElement</span>(docEl, {
+  delimiters: [
+    { left: <span class="str">"$$"</span>,  right: <span class="str">"$$"</span>,  display: <span class="kw">true</span>  },  <span class="cm">// équation centrée</span>
+    { left: <span class="str">"$"</span>,   right: <span class="str">"$"</span>,   display: <span class="kw">false</span> },  <span class="cm">// formule inline</span>
+    { left: <span class="str">"\\("</span>, right: <span class="str">"\\)"</span>, display: <span class="kw">false</span> },
+    { left: <span class="str">"\\["</span>, right: <span class="str">"\\]"</span>, display: <span class="kw">true</span>  },
+  ],
+  throwOnError: <span class="kw">false</span>,  <span class="cm">// formule non supportée → rouge, pas de crash</span>
+});</pre>
+      </div>
+
+      <!-- §3.5 -->
+      <div id="s35" style="scroll-margin-top:60px">
+        <h3>3.5 Gestion des figures</h3>
+        <p><code>_extraire_figures_doc()</code> extrait chaque figure Docling et l'enregistre en PNG.</p>
+
+        <h4>Filtre anti-bruit</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">MIN_DIM  = <span class="num">50</span>    <span class="cm"># px — width ET height minimum</span>
+MIN_AREA = <span class="num">2500</span>  <span class="cm"># px² — équivalent à 50×50</span>
+
+w, h = img.size
+<span class="kw">if</span> w < MIN_DIM <span class="kw">or</span> h < MIN_DIM <span class="kw">or</span> w * h < MIN_AREA:
+    <span class="kw">continue</span>  <span class="cm"># puce/ligne/icône → ignoré</span></pre>
+
+        <h4>Structure JSON d'une figure</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">{ <span class="str">"id"</span>: <span class="str">"f_0"</span>, <span class="str">"page"</span>: <span class="num">3</span>, <span class="str">"bbox"</span>: [<span class="num">72</span>, <span class="num">200</span>, <span class="num">400</span>, <span class="num">450</span>], <span class="str">"caption"</span>: <span class="str">"Figure 1…"</span>, <span class="str">"latex"</span>: <span class="str">""</span> }</pre>
+      </div>
+
+      <!-- §3.6 -->
+      <div id="s36" style="scroll-margin-top:60px">
+        <h3>3.6 Correction des PDFs problématiques</h3>
+
+        <table>
+          <thead>
+            <tr><th>Problème</th><th>Symptôme</th><th>Détection</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-orange">JPEG2000</span> (JPXDecode)</td>
+              <td>Images vides dans PDF.js</td>
+              <td><code>img_dict["ext"] in ("jpx", "jp2")</code></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-red">ICC invalide</span></td>
+              <td>Images blanches</td>
+              <td>Exception PyMuPDF contenant "cms/icc/profile"</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <details>
+          <summary>Code de détection — <code>_needs_rasterize()</code></summary>
+          <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="kw">for</span> img <span class="kw">in</span> page.<span class="fn">get_images</span>(full=<span class="kw">True</span>):
+    <span class="kw">try</span>:
+        img_dict = doc.<span class="fn">extract_image</span>(xref)
+        <span class="kw">if</span> img_dict[<span class="str">"ext"</span>] <span class="kw">in</span> (<span class="str">"jpx"</span>, <span class="str">"jp2"</span>): found = <span class="kw">True</span>  <span class="cm"># JPEG2000</span>
+    <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        err = <span class="fn">str</span>(e).<span class="fn">lower</span>()
+        <span class="kw">if</span> <span class="fn">any</span>(k <span class="kw">in</span> err <span class="kw">for</span> k <span class="kw">in</span> (<span class="str">"cms"</span>, <span class="str">"icc"</span>, <span class="str">"profile"</span>, <span class="str">"format error"</span>)):
+            found = <span class="kw">True</span>  <span class="cm"># ICC invalide</span></pre>
+        </details>
+
+        <div class="callout callout-warn">
+          <span class="callout-icon">⚠️</span>
+          <div>La correction rastérise chaque page via pypdfium2 (~0.05s/page). Le résultat <code>cleaned.pdf</code> est un PDF image sans couche texte mais avec toutes les images visibles.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §4 API REST -->
+    <div class="section" id="s4">
+      <div class="section-header">
+        <span class="section-badge">04</span>
+        <h2 class="section-title">Backend — API REST</h2>
+      </div>
+
+      <p>Tous les endpoints sont dans <code>main.py</code>. Base URL : <code>http://localhost:8000</code>.</p>
+
+      <h3>Endpoints principaux</h3>
+      <table>
+        <thead><tr><th>Méthode</th><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-orange">POST</span></td><td><code>/process</code></td><td>Upload PDF → lance extraction (background)</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/status</code></td><td>Poll l'état (processing / ready / failed)</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/outline</code></td><td>Arbre des sections JSON</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/pdf</code></td><td>PDF (source ou cleaned.pdf)</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/html</code></td><td>HTML riche Docling (pour le Reader)</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/figure/{fig_id}</code></td><td>Image PNG d'une figure</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/raw</code></td><td>result.json complet</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/markdown</code></td><td>Export .md</td></tr>
+          <tr><td><span class="badge badge-orange">POST</span></td><td><code>/doc/{id}/reprocess</code></td><td>Invalide le cache et relance le pipeline</td></tr>
+          <tr><td><span class="badge badge-red">DELETE</span></td><td><code>/doc/{id}</code></td><td>Supprime tout le cache</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Endpoints avancés</h3>
+      <table>
+        <thead><tr><th>Méthode</th><th>Endpoint</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/searchable-pdf</code></td><td>PDF + couche texte OCR</td></tr>
+          <tr><td><span class="badge badge-orange">POST</span></td><td><code>/doc/{id}/ocr-image/{fig_id}</code></td><td>OCR direct sur image de figure</td></tr>
+          <tr><td><span class="badge badge-orange">POST</span></td><td><code>/doc/{id}/latex-ocr</code></td><td>Relance pix2tex sur les figures</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/doc/{id}/benchmark</code></td><td>Benchmark des outils d'extraction</td></tr>
+          <tr><td><span class="badge badge-blue">GET</span></td><td><code>/tesseract/status</code></td><td>Disponibilité Tesseract</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Traitement asynchrone</h3>
+      <p><code>POST /process</code> répond immédiatement (<code>{status: "processing"}</code>) et lance le pipeline dans un thread background (<code>BackgroundTasks</code>). Le frontend poll <code>GET /doc/{id}/status</code> toutes les 1.5s jusqu'à <code>{status: "ready"}</code>.</p>
+
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">active_tasks: <span class="fn">dict</span>[<span class="py">str</span>, <span class="py">dict</span>]  <span class="cm"># partagé entre threads, protégé par threading.Lock()</span></pre>
+
+      <div class="callout callout-info">
+        <span class="callout-icon">ℹ️</span>
+        <div>
+          Si le pipeline réussit → <code>result.json</code> écrit.<br>
+          Si le pipeline échoue → <code>error.json</code> écrit avec le message d'erreur.
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §5 CACHE -->
+    <div class="section" id="s5">
+      <div class="section-header">
+        <span class="section-badge">05</span>
+        <h2 class="section-title">Cache et persistance</h2>
+      </div>
+
+      <h3>Identifiant document</h3>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">doc_id = <span class="fn">SHA256</span>(pdf_bytes)[:<span class="num">16</span>]  <span class="cm"># 16 chars hex, 64 bits d'entropie</span></pre>
+
+      <div class="callout callout-success">
+        <span class="callout-icon">✅</span>
+        <div><strong>Idempotent :</strong> re-uploader le même fichier retourne le cache immédiatement sans re-traitement.</div>
+      </div>
+
+      <h3>Structure du cache</h3>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">backend/cache/{doc_id}/
+├── source.pdf         <span class="cm">← Original uploadé (jamais modifié)</span>
+├── result.json        <span class="cm">← Données extraites (outline, figures, tables)</span>
+├── result.html        <span class="cm">← HTML Docling (images base64 embedded)</span>
+├── result.md          <span class="cm">← Export Markdown</span>
+├── cleaned.pdf        <span class="cm">← Généré si JPEG2000 ou ICC invalide</span>
+├── searchable.pdf     <span class="cm">← Généré si OCRmyPDF demandé</span>
+└── figures/
+    ├── f_0.png
+    └── …</pre>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">💾</span>
+        <div>Pas de base de données. La liste des documents récents est stockée en <code>localStorage</code> côté frontend.</div>
+      </div>
+
+      <h3>Structure de <code>result.json</code></h3>
+      <details open>
+        <summary>Voir le schéma complet</summary>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">{
+  <span class="str">"doc_id"</span>: <span class="str">"a3f2c1b8e9d04512"</span>,
+  <span class="str">"filename"</span>: <span class="str">"rapport.pdf"</span>,
+  <span class="str">"extraction_mode"</span>: <span class="str">"fast"</span>,      <span class="cm">// "fast" | "docling"</span>
+  <span class="str">"pages"</span>: [{ <span class="str">"number"</span>: <span class="num">1</span>, <span class="str">"width"</span>: <span class="num">595.3</span>, <span class="str">"height"</span>: <span class="num">841.9</span> }],
+  <span class="str">"outline"</span>: [
+    {
+      <span class="str">"id"</span>: <span class="str">"s_0"</span>, <span class="str">"level"</span>: <span class="num">1</span>, <span class="str">"title"</span>: <span class="str">"Introduction"</span>,
+      <span class="str">"page"</span>: <span class="num">1</span>, <span class="str">"bbox"</span>: [<span class="num">72</span>, <span class="num">100</span>, <span class="num">523</span>, <span class="num">130</span>],
+      <span class="str">"children"</span>: [
+        { <span class="str">"id"</span>: <span class="str">"s_1"</span>, <span class="str">"level"</span>: <span class="num">2</span>, <span class="str">"title"</span>: <span class="str">"1.1 Contexte"</span>, … }
+      ]
+    }
+  ],
+  <span class="str">"figures"</span>: [
+    { <span class="str">"id"</span>: <span class="str">"f_0"</span>, <span class="str">"page"</span>: <span class="num">3</span>, <span class="str">"bbox"</span>: […], <span class="str">"caption"</span>: <span class="str">"Figure 1…"</span>, <span class="str">"latex"</span>: <span class="str">""</span> }
+  ],
+  <span class="str">"tables"</span>: [
+    { <span class="str">"id"</span>: <span class="str">"t_0"</span>, <span class="str">"page"</span>: <span class="num">5</span>, <span class="str">"bbox"</span>: […], <span class="str">"caption"</span>: <span class="str">"Tableau 1"</span>,
+      <span class="str">"html"</span>: <span class="str">"&lt;table&gt;…&lt;/table&gt;"</span>, <span class="str">"n_rows"</span>: <span class="num">4</span>, <span class="str">"n_cols"</span>: <span class="num">3</span> }
+  ],
+  <span class="str">"tesseract_available"</span>: <span class="kw">true</span>
+}</pre>
+      </details>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §6 FRONTEND -->
+    <div class="section" id="s6">
+      <div class="section-header">
+        <span class="section-badge">06</span>
+        <h2 class="section-title">Frontend — Architecture</h2>
+      </div>
+
+      <!-- §6.1 -->
+      <div id="s61" style="scroll-margin-top:60px">
+        <h3>6.1 Shell principal App.tsx</h3>
+        <p><code>App.tsx</code> est le point d'entrée React. Il orchestre tout.</p>
+
+        <h4>State principal</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">doc          : DocResult | <span class="kw">null</span>    <span class="cm">// données extraites du PDF</span>
+viewMode     : <span class="str">"pdf"</span> | <span class="str">"reader"</span> | <span class="str">"compare"</span>
+activeTab    : <span class="str">"outline"</span> | <span class="str">"gallery"</span> | <span class="str">"tables"</span>
+currentPage  : <span class="py">number</span>              <span class="cm">// page courante dans le viewer</span>
+selectedSection : <span class="py">string</span> | <span class="kw">null</span>   <span class="cm">// id section courante</span>
+processing   : { progress, message } | <span class="kw">null</span></pre>
+
+        <h4>Refs (handles vers composants enfants)</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">viewerRef : PdfViewerHandle   <span class="cm">// expose scrollToPage(n)</span>
+readerRef : ReaderHandle      <span class="cm">// expose scrollToSection(title)</span></pre>
+
+        <div class="callout callout-info">
+          <span class="callout-icon">💡</span>
+          <div>Ces refs permettent à <code>App.tsx</code> de commander la navigation dans les deux panneaux simultanément (mode Comparer).</div>
+        </div>
+
+        <h4>Cycle de vie upload</h4>
+        <div class="flow">
+          <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><div class="flow-title">Drop / sélection PDF</div><div class="flow-desc">L'utilisateur dépose ou choisit un fichier</div></div></div>
+          <div class="flow-connector"></div>
+          <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><div class="flow-title">POST /process</div><div class="flow-desc">Réponse immédiate <code>{status: "processing", doc_id}</code></div></div></div>
+          <div class="flow-connector"></div>
+          <div class="flow-step"><div class="flow-num">3</div><div class="flow-content"><div class="flow-title">Poll (1500ms)</div><div class="flow-desc"><code>GET /doc/{id}/status</code> jusqu'à "ready"</div></div></div>
+          <div class="flow-connector"></div>
+          <div class="flow-step"><div class="flow-num">4</div><div class="flow-content"><div class="flow-title">LoadingDocling</div><div class="flow-desc">Progress 0→100, étapes animées</div></div></div>
+          <div class="flow-connector"></div>
+          <div class="flow-step"><div class="flow-num">5</div><div class="flow-content"><div class="flow-title">Status "ready"</div><div class="flow-desc"><code>GET /doc/{id}/raw</code> → <code>setDoc(result)</code></div></div></div>
+        </div>
+      </div>
+
+      <!-- §6.2 -->
+      <div id="s62" style="scroll-margin-top:60px">
+        <h3>6.2 PDF Viewer</h3>
+        <p>Utilise <code>react-pdf</code> (wrapper React de PDF.js).</p>
+
+        <div class="callout callout-warn">
+          <span class="callout-icon">⚠️</span>
+          <div><strong>Worker PDF.js</strong> chargé depuis CDN (pas via Vite <code>?url</code> qui casse le MIME type) :
+          <pre style="margin-top:8px"><button class="copy-btn" onclick="copyCode(this)">Copier</button">pdfjs.GlobalWorkerOptions.workerSrc =
+  <span class="str">"https://unpkg.com/pdfjs-dist@X.Y.Z/build/pdf.worker.min.mjs"</span>;</pre></div>
+        </div>
+
+        <ul>
+          <li><strong>Synchronisation scroll ↔ outline :</strong> <code>IntersectionObserver</code> sur chaque page → détecte la page visible → highlight sidebar</li>
+          <li><strong>Marqueurs de figures :</strong> overlay <code>&lt;button&gt;</code> positionnés en CSS <code>%</code> sur chaque page, coordonnées bbox converties via <code>src/bbox.ts</code></li>
+        </ul>
+      </div>
+
+      <!-- §6.3 -->
+      <div id="s63" style="scroll-margin-top:60px">
+        <h3>6.3 Reader (mode livre)</h3>
+        <p>Le Reader prend le HTML Docling brut (<code>GET /doc/{id}/html</code>) et le transforme en expérience de lecture interactive.</p>
+
+        <h4>sectionizeHtml(html, outline) — le cœur du Reader</h4>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">HTML Docling brut
+  ↓ DOMParser
+  ↓ <span class="fn">processNode</span>() — parcourt &lt;body&gt; enfant par enfant
+  ↓ Si &lt;h1-h4&gt; dont le texte normalisé ∈ outlineTitles → NOUVELLE section
+  ↓ Sinon → ajouté à la section courante
+  → Section[] (tableaux de {title, htmlContent, outlineId})</pre>
+
+        <h4>Règles de découpage</h4>
+        <ol>
+          <li><code>outlineTitles</code> = Set des titres de l'outline backend, normalisés (lowercase + collapse whitespace). Seuls ces titres créent une section <em>(FIX-006)</em>.</li>
+          <li><code>LEAF_DIV_CLASSES</code> = classes dans lesquelles on ne récurse pas : <code>formula-not-decoded</code>, <code>formula</code>, <code>table-wrap</code>, <code>fig-wrap</code> <em>(FIX-005)</em>.</li>
+          <li><code>isPageHeaderFooter()</code> filtre les numéros de page et paragraphes courts en italique <em>(FIX-007)</em>.</li>
+          <li>Post-pass logos : suppression des <code>&lt;figure&gt;</code> base64 &lt; 30 kB sans légende.</li>
+        </ol>
+
+        <div class="callout callout-info">
+          <span class="callout-icon">📖</span>
+          <div><strong>Focus mode :</strong> l'utilisateur voit une section à la fois. Navigation ← / →. KaTeX appliqué à chaque changement de section (<code>useEffect([currentSection])</code>).</div>
+        </div>
+      </div>
+
+      <!-- §6.4 -->
+      <div id="s64" style="scroll-margin-top:60px">
+        <h3>6.4 Mode Comparer</h3>
+        <p>PDF viewer (gauche, 50%) + Reader (droite, 50%), synchronisés :</p>
+
+        <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="cm">// Clic outline → les deux panneaux naviguent (FIX-009)</span>
+<span class="kw">if</span> (viewMode === <span class="str">"compare"</span>) {
+  <span class="kw">if</span> (node.page != <span class="kw">null</span>) viewerRef.current?.<span class="fn">scrollToPage</span>(node.page);
+  readerRef.current?.<span class="fn">scrollToSection</span>(node.title);
+}</pre>
+
+        <div class="callout callout-success">
+          <span class="callout-icon">✅</span>
+          <div>La synchronisation fonctionne via les <code>forwardRef</code> handles — <code>MarkdownReader</code> expose <code>scrollToSection</code> (FIX-008) et <code>PdfViewer</code> expose <code>scrollToPage</code>.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §7 FLUX -->
+    <div class="section" id="s7">
+      <div class="section-header">
+        <span class="section-badge">07</span>
+        <h2 class="section-title">Flux de données complet</h2>
+      </div>
+
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button">[Utilisateur sélectionne <span class="str">"rapport.pdf"</span>]
+         │
+         ▼
+[POST /process]
+  ├─ hash(bytes) → doc_id = <span class="str">"a3f2c1b8"</span>
+  ├─ result.json existe ? → retour cache immédiat
+  └─ Non → source.pdf écrit → background thread
+
+[Background thread — pipeline.py]
+  ├─ <span class="fn">has_native_text</span>() → natif (pypdfium2) ou scanné (Docling)
+  │
+  ├─ NATIF :
+  │   ├─ <span class="fn">_toc_vers_outline</span>() → outline hiérarchique
+  │   ├─ Compléter annexes manquantes du TOC
+  │   └─ Extraire texte page par page
+  │
+  └─ DOCLING (par tranches de <span class="num">10</span> pages) :
+      ├─ <span class="fn">convert</span>() → doc Docling
+      ├─ pix2tex sur formula-not-decoded
+      ├─ <span class="fn">export_to_html</span>(EMBEDDED) → all_html_parts
+      ├─ <span class="fn">_extraire_figures_doc</span>() → figures/f_N.png (filtre &lt; 50×50px)
+      └─ <span class="fn">_extraire_tables_doc</span>() → tables HTML
+
+  ├─ Post-traitement HTML :
+  │   ├─ <span class="fn">_extract_body</span>()
+  │   ├─ <span class="fn">_clean_html_spaces</span>()
+  │   ├─ <span class="fn">_fix_formula_html</span>()        ← patch classes formules
+  │   └─ <span class="fn">_strip_page_headers_footers</span>()
+  │
+  └─ Écriture cache :
+      ├─ result.json   (outline + figures + tables + pages)
+      ├─ result.html   (HTML Docling traité)
+      └─ result.md     (export Markdown)
+
+[Frontend poll /doc/{id}/status]
+  ├─ processing → affiche LoadingDocling (progress bar)
+  └─ ready → GET /doc/{id}/raw → <span class="fn">setDoc</span>(result)
+
+[Affichage]
+  ├─ Sidebar : arbre Sommaire depuis result.outline
+  ├─ Onglet Galerie : thumbnails depuis result.figures
+  ├─ Onglet Tables : HTML depuis result.tables
+  ├─ Mode PDF : GET /doc/{id}/pdf
+  └─ Mode Reader : GET /doc/{id}/html
+      ├─ <span class="fn">sectionizeHtml</span>() → Section[]
+      └─ KaTeX auto-render → formules rendues</pre>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §8 INVARIANTS -->
+    <div class="section" id="s8">
+      <div class="section-header">
+        <span class="section-badge">08</span>
+        <h2 class="section-title">Invariants critiques</h2>
+      </div>
+
+      <div class="callout callout-danger">
+        <span class="callout-icon">🚫</span>
+        <div>Ces comportements <strong>NE DOIVENT PAS être régressés</strong>. Vérifier le snippet de code correspondant avant toute modification.</div>
+      </div>
+
+      <table class="fix-row">
+        <thead>
+          <tr><th>FIX</th><th>Fichier</th><th>Invariant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="fix-badge">FIX-001</span></td><td><code>main.py</code></td><td><code>_needs_rasterize()</code> détecte JPEG2000 ET ICC invalide → <code>cleaned.pdf</code></td></tr>
+          <tr><td><span class="fix-badge">FIX-002</span></td><td><code>pipeline.py</code></td><td><code>_ANNEX_PREFIX</code> reconnaît Attachment/Appendix/Annex/Exhibit comme sections</td></tr>
+          <tr><td><span class="fix-badge">FIX-003</span></td><td><code>pipeline.py</code></td><td>Annexes absentes du TOC → scan texte complémentaire</td></tr>
+          <tr><td><span class="fix-badge">FIX-004</span></td><td><code>pipeline.py</code></td><td><code>_strip_page_headers_footers()</code> supprime numéros de page et italiques répétitifs</td></tr>
+          <tr><td><span class="fix-badge">FIX-005</span></td><td><code>MarkdownReader.tsx</code></td><td><code>LEAF_DIV_CLASSES</code> empêche la récursion dans les formules</td></tr>
+          <tr><td><span class="fix-badge">FIX-006</span></td><td><code>MarkdownReader.tsx</code></td><td>Seuls les headings ∈ <code>outlineTitles</code> créent une section</td></tr>
+          <tr><td><span class="fix-badge">FIX-007</span></td><td><code>MarkdownReader.tsx</code></td><td><code>isPageHeaderFooter()</code> + suppression logos sans légende</td></tr>
+          <tr><td><span class="fix-badge">FIX-008</span></td><td><code>MarkdownReader.tsx</code></td><td><code>forwardRef&lt;ReaderHandle&gt;</code> exposant <code>scrollToSection</code></td></tr>
+          <tr><td><span class="fix-badge">FIX-009</span></td><td><code>App.tsx</code></td><td>Mode compare → navigate viewer ET reader</td></tr>
+          <tr><td><span class="fix-badge">FIX-010</span></td><td><code>App.tsx</code></td><td><code>handleSelect</code> utilise <code>viewMode</code>, jamais <code>effectiveViewMode</code></td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-info">
+        <span class="callout-icon">📚</span>
+        <div>Détail complet avec snippets → <code>memory/fixes-registry.md</code></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §9 ENV VARS -->
+    <div class="section" id="s9">
+      <div class="section-header">
+        <span class="section-badge">09</span>
+        <h2 class="section-title">Variables d'environnement</h2>
+      </div>
+
+      <table class="env-table">
+        <thead>
+          <tr><th>Variable</th><th>Défaut</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>FORMULA_ENRICHMENT</code></td>
+            <td><span class="badge badge-orange">0</span></td>
+            <td><code>1</code> → active CodeFormulaV2 dans Docling (télécharge ~1-2 GB HuggingFace)</td>
+          </tr>
+          <tr>
+            <td><code>PIX2TEX_FALLBACK</code></td>
+            <td><span class="badge badge-green">1</span></td>
+            <td><code>0</code> → désactive pix2tex même si installé</td>
+          </tr>
+          <tr>
+            <td><code>TESSERACT_CMD</code></td>
+            <td><span class="badge badge-blue">auto</span></td>
+            <td>Chemin binaire tesseract (ex: <code>C:\…\tesseract.exe</code>)</td>
+          </tr>
+          <tr>
+            <td><code>TESSDATA_PREFIX</code></td>
+            <td><span class="badge badge-blue">auto</span></td>
+            <td>Répertoire des données de langue Tesseract</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- §10 LANCER -->
+    <div class="section" id="s10">
+      <div class="section-header">
+        <span class="section-badge">10</span>
+        <h2 class="section-title">Lancer le projet</h2>
+      </div>
+
+      <h3>Backend</h3>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="cm"># Terminal 1</span>
+<span class="kw">cd</span> backend
+.venv\Scripts\<span class="fn">activate</span>          <span class="cm"># Windows</span>
+<span class="cm"># source .venv/bin/activate     # Linux/Mac</span>
+
+uvicorn main:app --reload --reload-exclude .venv
+<span class="cm"># API disponible : http://localhost:8000</span>
+<span class="cm"># Docs interactives : http://localhost:8000/docs</span></pre>
+
+      <h3>Frontend</h3>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="cm"># Terminal 2</span>
+<span class="kw">cd</span> frontend
+npm install                     <span class="cm"># première fois seulement</span>
+npm run dev
+<span class="cm"># → http://localhost:5173</span></pre>
+
+      <h3>Activer les formules (optionnel)</h3>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="cm"># Option A : CodeFormulaV2 (Docling built-in, ~1-2 GB download)</span>
+<span class="kw">set</span> FORMULA_ENRICHMENT=<span class="num">1</span>        <span class="cm"># Windows</span>
+<span class="kw">export</span> FORMULA_ENRICHMENT=<span class="num">1</span>     <span class="cm"># Linux/Mac</span>
+
+<span class="cm"># Option B : pix2tex (doit être installé)</span>
+pip install pix2tex              <span class="cm"># ~400 MB modèle ViT</span>
+<span class="cm"># PIX2TEX_FALLBACK=1 par défaut</span></pre>
+
+      <h3>Activer l'OCR couche texte (optionnel)</h3>
+      <pre><button class="copy-btn" onclick="copyCode(this)">Copier</button"><span class="cm"># Installer Tesseract (Windows via scoop)</span>
+scoop install tesseract
+scoop install tesseract-languages  <span class="cm"># données langue eng + fra</span>
+pip install ocrmypdf</pre>
+
+      <hr />
+      <p style="color:var(--muted);font-size:13px;text-align:center;">
+        Document généré le 2026-05-21. Mettre à jour via <code>memory/LOG.md</code> après chaque changement significatif.
+      </p>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<button id="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Retour en haut">↑</button>
+
+<script>
+  // ── THEME ──
+  function toggleTheme() {
+    const root = document.documentElement;
+    const isDark = root.getAttribute('data-theme') !== 'light';
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    document.getElementById('theme-btn').textContent = isDark ? '🌙 Thème' : '☀️ Thème';
+  }
+
+  // ── PROGRESS BAR ──
+  window.addEventListener('scroll', () => {
+    const el = document.getElementById('content');
+    const scrolled = window.scrollY;
+    const total = document.body.scrollHeight - window.innerHeight;
+    document.getElementById('progress').style.width = (scrolled / total * 100) + '%';
+    document.getElementById('back-top').classList.toggle('visible', scrolled > 400);
+  });
+
+  // ── TOC ACTIVE ──
+  const sections = document.querySelectorAll('.section, [id^="s"]');
+  const tocLinks = document.querySelectorAll('.toc-item');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = e.target.id;
+        tocLinks.forEach(l => {
+          l.classList.toggle('active', l.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  document.querySelectorAll('[id]').forEach(el => observer.observe(el));
+
+  // ── COPY CODE ──
+  function copyCode(btn) {
+    const pre = btn.parentElement;
+    const text = pre.innerText.replace('Copier\n', '').replace('Copié ✓\n', '');
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copié ✓';
+      setTimeout(() => btn.textContent = 'Copier', 2000);
+    });
+  }
+
+  // ── SEARCH ──
+  const searchBox = document.getElementById('search-box');
+  searchBox.addEventListener('input', function() {
+    const q = this.value.trim().toLowerCase();
+    const content = document.getElementById('content');
+
+    // Remove previous highlights
+    content.querySelectorAll('.highlight').forEach(h => {
+      h.outerHTML = h.innerHTML;
+    });
+
+    // Filter TOC
+    tocLinks.forEach(l => {
+      const text = l.textContent.toLowerCase();
+      l.style.display = (!q || text.includes(q)) ? '' : 'none';
+    });
+
+    if (!q) return;
+
+    // Highlight in content (simple text nodes)
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => {
+        const skip = ['SCRIPT', 'STYLE', 'BUTTON'];
+        if (skip.includes(n.parentElement.tagName)) return NodeFilter.FILTER_REJECT;
+        if (n.textContent.trim() === '') return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const matches = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (node.textContent.toLowerCase().includes(q)) matches.push(node);
+    }
+    matches.forEach(node => {
+      const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+      const span = document.createElement('span');
+      span.innerHTML = node.textContent.replace(regex, '<mark class="highlight">$1</mark>');
+      node.parentNode.replaceChild(span, node);
+    });
+  });
+
+  // ── CLOSE SIDEBAR ON OUTSIDE CLICK (mobile) ──
+  document.addEventListener('click', e => {
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('toggle-sidebar');
+    if (window.innerWidth <= 900 && sidebar.classList.contains('open')) {
+      if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
+        sidebar.classList.remove('open');
+      }
+    }
+  });
+
+  // Close sidebar when a TOC link is clicked on mobile
+  tocLinks.forEach(l => l.addEventListener('click', () => {
+    if (window.innerWidth <= 900) {
+      document.getElementById('sidebar').classList.remove('open');
+    }
+  }));
+</script>
+</body>
+</html>
