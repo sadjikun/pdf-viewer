@@ -1331,24 +1331,69 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       : htmlContent;
   }, [htmlContent, focusSid, focusIdx, sections, paperMeta, outline]);
 
-  // Load highlights & notes when docId changes
+  // Load highlights & notes when docId changes (server-first + localStorage migration)
   useEffect(() => {
     if (!docId) return;
-    try {
-      const storedHls = localStorage.getItem(`reader-hl-${docId}`);
-      setHighlights(storedHls ? JSON.parse(storedHls) : []);
+    let cancelled = false;
 
-      const storedNotes = localStorage.getItem(`reader-notes-${docId}`);
-      setNotes(storedNotes ? JSON.parse(storedNotes) : {});
-    } catch (e) {
-      console.error("Error reading highlights/notes from localStorage", e);
-    }
+    // Migrate legacy localStorage highlights: recompute deterministic keys
+    // with empty section (whole-doc restore fallback), remap note keys.
+    const migrateLegacy = (): { hls: Highlight[]; nts: Record<string, string> } => {
+      let legacyHls: Highlight[] = [];
+      let legacyNts: Record<string, string> = {};
+      try {
+        legacyHls = JSON.parse(localStorage.getItem(`reader-hl-${docId}`) || "[]");
+        legacyNts = JSON.parse(localStorage.getItem(`reader-notes-${docId}`) || "{}");
+      } catch {
+        return { hls: [], nts: {} };
+      }
+      const remap: Record<string, string> = {};
+      const hls = legacyHls.map((h) => {
+        const newKey = h.section ? h.key : `::${shortHash(normForKey(h.text))}`;
+        if (newKey !== h.key) remap[h.key] = newKey;
+        return { ...h, key: newKey, section: h.section ?? "", page: h.page ?? 0 };
+      });
+      const nts: Record<string, string> = {};
+      for (const [k, v] of Object.entries(legacyNts)) {
+        nts[remap[k] ?? k] = v;
+      }
+      return { hls, nts };
+    };
+
+    (async () => {
+      let store: AnnotationStore | null = null;
+      try {
+        store = await getAnnotations(docId);
+      } catch {
+        store = null; // offline — fall back to localStorage below
+      }
+      if (cancelled) return;
+
+      if (store && store.highlights.length > 0) {
+        setHighlights(store.highlights as Highlight[]);
+        setNotes(store.notes ?? {});
+      } else {
+        const { hls, nts } = migrateLegacy();
+        setHighlights(hls);
+        setNotes(nts);
+        if (hls.length > 0) persistAll(hls, nts); // push migrated data to server
+      }
+    })();
+
     setBreadcrumb(cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document"));
     // Clean up TTS when changing document
     window.speechSynthesis.cancel();
     setTtsActive(false);
     setTtsPaused(false);
-  }, [docId, filename, pdfTitle]);
+
+    return () => {
+      cancelled = true;
+      if (syncTimerRef.current !== null) {
+        window.clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, [docId, filename, pdfTitle, persistAll]);
 
   // Reapply highlights to the DOM when visibleHtml, highlights, notes, or renderMode change
   useEffect(() => {
