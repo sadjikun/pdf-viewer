@@ -1,19 +1,19 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, getDocStatus, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
+import { ApiError, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
+import { Library } from "./components/Library/Library";
 import { LoadingDocling } from "./components/Loading/LoadingDocling";
 import { Outline } from "./components/Outline/Outline";
 import { SearchBar } from "./components/Search/SearchBar";
 import { Tables } from "./components/Tables/Tables";
-import { UploadZone } from "./components/Upload/UploadZone";
 import type { ViewerHandle } from "./components/Viewer/Viewer";
 
 const Viewer = lazy(() =>
   import("./components/Viewer/Viewer").then((m) => ({ default: m.Viewer }))
 );
 import { findActiveSection, flattenOutline } from "./outline";
-import type { DocResult, OutlineNode } from "./types";
+import type { DocResult, LibraryResponse, OutlineNode } from "./types";
 import "./App.css";
 
 const LS_KEY = "pdf-viewer:lastDocId";
@@ -56,6 +56,13 @@ function App() {
   const [matchTotal, setMatchTotal] = useState(0);
   const [progressPercent, setProgressPercent] = useState<number | null>(null);
   const [progressMessage, setProgressMessage] = useState("");
+  const [library, setLibrary] = useState<LibraryResponse>({
+    documents: [],
+    processing: [],
+    failed: [],
+    total: 0,
+  });
+  const [lastDocId, setLastDocId] = useState<string | null>(() => localStorage.getItem(LS_KEY));
   const viewerRef = useRef<ViewerHandle>(null);
   const pollRef = useRef<number | null>(null);
 
@@ -63,6 +70,14 @@ function App() {
     if (pollRef.current != null) {
       clearInterval(pollRef.current);
       pollRef.current = null;
+    }
+  }, []);
+
+  const refreshLibrary = useCallback(async () => {
+    try {
+      setLibrary(await getLibrary());
+    } catch {
+      // La bibliothèque n'est pas critique : on ignore silencieusement un échec de rafraîchissement.
     }
   }, []);
 
@@ -79,9 +94,11 @@ function App() {
             stopPolling();
             const result = await getResult(docId);
             setDoc(result);
+            setLastDocId(docId);
             localStorage.setItem(LS_KEY, docId);
             setLoading(false);
             setProgressPercent(null);
+            refreshLibrary();
           } else if (st.status === "processing") {
             setProgressPercent(st.progress ?? 0);
             setProgressMessage(st.message ?? "");
@@ -90,6 +107,7 @@ function App() {
             setError(st.error ?? "Échec du traitement.");
             setLoading(false);
             setProgressPercent(null);
+            refreshLibrary();
           }
           // "not_found" : transitoire juste après le lancement → on continue à poller
         } catch (e) {
@@ -100,16 +118,45 @@ function App() {
         }
       }, 1500);
     },
-    [stopPolling],
+    [stopPolling, refreshLibrary],
   );
 
+  // Charge la bibliothèque au montage (vue d'accueil = catalogue local).
   useEffect(() => {
-    const lastId = localStorage.getItem(LS_KEY);
-    if (!lastId) return;
-    getResult(lastId)
-      .then((res) => setDoc(res))
-      .catch(() => localStorage.removeItem(LS_KEY));
+    getLibrary().then(setLibrary).catch(() => {});
   }, []);
+
+  const openDocument = useCallback(async (docId: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await getResult(docId);
+      setDoc(result);
+      setLastDocId(docId);
+      localStorage.setItem(LS_KEY, docId);
+    } catch (e) {
+      if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
+      else setError("Impossible d'ouvrir le document.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleDeleteDocument = useCallback(
+    async (docId: string) => {
+      try {
+        await deleteDoc(docId);
+        if (docId === localStorage.getItem(LS_KEY)) {
+          localStorage.removeItem(LS_KEY);
+          setLastDocId(null);
+        }
+        refreshLibrary();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Suppression impossible.");
+      }
+    },
+    [refreshLibrary],
+  );
 
   const handleFile = async (file: File) => {
     setLoading(true);
@@ -129,6 +176,7 @@ function App() {
       } else {
         // Cache hit → résultat complet immédiat
         setDoc(res as DocResult);
+        setLastDocId(res.doc_id);
         localStorage.setItem(LS_KEY, res.doc_id);
         setLoading(false);
       }
@@ -169,7 +217,7 @@ function App() {
     setFigureIdx(null);
     setLoading(false);
     setProgressPercent(null);
-    localStorage.removeItem(LS_KEY);
+    refreshLibrary(); // revient au catalogue, rafraîchi
   };
 
   const gotoPage = (page: number) => {
@@ -187,8 +235,18 @@ function App() {
           </button>
         </header>
         {loading && <LoadingDocling progress={progressPercent} message={progressMessage} />}
-        {error && <div className="app-error">{error}</div>}
-        {!loading && <UploadZone onFile={handleFile} disabled={loading} />}
+        <Library
+          documents={library.documents}
+          processing={library.processing}
+          failed={library.failed}
+          lastDocId={lastDocId}
+          loading={loading}
+          error={error}
+          onOpen={openDocument}
+          onDelete={handleDeleteDocument}
+          onUpload={handleFile}
+          onRefresh={refreshLibrary}
+        />
       </div>
     );
   }

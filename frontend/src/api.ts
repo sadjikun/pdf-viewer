@@ -1,4 +1,4 @@
-import type { DocResult, DocStatus, ProcessingResponse } from "./types";
+import type { DocResult, DocStatus, LibraryResponse, ProcessingResponse } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -39,6 +39,17 @@ export async function getResult(docId: string): Promise<DocResult> {
   const res = await fetch(`${API_BASE}/doc/${docId}/raw`);
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
   return res.json();
+}
+
+export async function getLibrary(): Promise<LibraryResponse> {
+  const res = await fetch(`${API_BASE}/library`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function deleteDoc(docId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/doc/${docId}`, { method: "DELETE" });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
 }
 
 export function pdfUrl(docId: string): string {
