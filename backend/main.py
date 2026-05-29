@@ -551,3 +551,47 @@ def run_latex_ocr(doc_id: str) -> JSONResponse:
     os.replace(tmp_path, result_path)
 
     return JSONResponse({"status": "ok", "figures_updated": updated})
+
+
+@app.post("/doc/{doc_id}/caption-figures")
+def caption_figures(doc_id: str) -> JSONResponse:
+    """Légende chaque figure via Florence-2 et stocke caption_ai dans result.json.
+
+    Opt-in : modèle microsoft/Florence-2-base (~450 Mo) téléchargé au 1er usage.
+    Requiert transformers + torch (déjà présents) + einops + timm. 503 si indisponible.
+    """
+    import captioning
+
+    ddir = _doc_dir(doc_id)
+    result_path = ddir / "result.json"
+    if not result_path.exists():
+        raise HTTPException(404, "Document inconnu")
+
+    if not captioning.init_florence():
+        raise HTTPException(503, "Florence-2 non disponible (pip install einops timm).")
+
+    with open(result_path, encoding="utf-8") as f:
+        result = json.load(f)
+    figures = result.get("figures", [])
+    figures_dir = ddir / "figures"
+
+    from PIL import Image
+    updated = 0
+    for fig in figures:
+        fig_id = fig.get("id", "")
+        if not FIG_ID_RE.fullmatch(fig_id):
+            continue
+        img_path = figures_dir / f"{fig_id}.png"
+        if not img_path.exists():
+            continue
+        try:
+            caption = captioning.caption_figure(Image.open(img_path).convert("RGB"))
+        except Exception:
+            log.exception("Florence-2 échec sur %s", fig_id)
+            continue
+        if caption:
+            fig["caption_ai"] = caption
+            updated += 1
+
+    _write_json_atomic(result_path, result)
+    return JSONResponse({"status": "ok", "figures_updated": updated})
