@@ -31,16 +31,16 @@ pyinstaller ^
   --onefile ^
   --windowed ^
   --name launcher ^
+  --icon assets\app.ico ^
   --distpath . ^
   --workpath build\_pyinstaller ^
   --specpath build ^
-  --hidden-import=pystray._win32 ^
-  --hidden-import=PIL._imaging ^
-  --hidden-import=PIL.ImageDraw ^
-  --hidden-import=win32api ^
-  --hidden-import=win32gui ^
-  --hidden-import=win32con ^
+  --collect-all webview ^
   --hidden-import=psutil ^
+  --hidden-import=PIL._imaging ^
+  --add-data "assets\app.ico;assets" ^
+  --add-data "assets\MicrosoftEdgeWebview2Setup.exe;assets" ^
+  --add-data "launcher_core.py;." ^
   launcher.py
 
 if errorlevel 1 (
@@ -58,9 +58,8 @@ echo.
 echo  +----------------------------------------------+
 echo  ^|  [OK] launcher.exe cree dans ce dossier !   ^|
 echo  ^|                                              ^|
-echo  ^|  Double-clic pour lancer (icone systray).   ^|
-echo  ^|  Clic droit sur l'icone pour demarrer       ^|
-echo  ^|  Standard ou Mode IA.                        ^|
+echo  ^|  Double-clic : fenetre de l'application.     ^|
+echo  ^|  Choix Standard / Mode IA dans la fenetre.   ^|
 echo  +----------------------------------------------+
 echo.
 pause
