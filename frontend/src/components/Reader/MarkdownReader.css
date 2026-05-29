@@ -2390,4 +2390,6 @@ mark.reader-sm.is-active {
   padding: .5rem .75rem; text-decoration: none; color: var(--tx, #222);
 }
 .reader-fiche-menu a:hover { background: rgba(0,0,0,.06); }
+.reader-fiche-menu a:first-child { border-radius: 6px 6px 0 0; }
+.reader-fiche-menu a:last-child  { border-radius: 0 0 6px 6px; }
 
