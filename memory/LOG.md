@@ -4,10 +4,11 @@ Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
 ### 2026-05-29 — Launcher fenêtre pywebview + chooser de mode (D1)
-**Fichiers modifiés :** `launcher.py`, `launcher_core.py` (nouveau), `make_icon.py` (nouveau), `assets/app.ico` (nouveau), `assets/MicrosoftEdgeWebview2Setup.exe` (nouveau), `build.bat`, `backend/requirements.txt`, `frontend/src/components/ModeChooser/*` (nouveau), `frontend/src/App.tsx`, `tests/launcher/*` (nouveau), wiki `memory/`
+**Fichiers modifiés :** `launcher.py`, `launcher_core.py` (nouveau), `make_icon.py` (nouveau), `assets/app.ico` (nouveau), `assets/MicrosoftEdgeWebview2Setup.exe` (nouveau), `build.bat`, `backend/requirements.txt`, `frontend/src/components/ModeChooser/*` (nouveau), `frontend/src/App.tsx`, `tests/launcher/*` (nouveau), `start.bat`+`start-ai.bat` (supprimés), `README.md`, wiki `memory/`
 **Résumé :** Remplacement du launcher systray (pystray) par une fenêtre de bureau pywebview : double-clic → splash (icône livre) → démarrage auto backend+frontend → chargement de l'app ; fermer la fenêtre arrête les deux serveurs (window-only). L'app accueille par un `ModeChooser` Standard/IA à chaque lancement (dernier choix présélectionné, `setAppMode`). Icône launcher/exe/fenêtre = favicon livre (`assets/app.ico`). Runtime WebView2 bundlé (auto-install au 1er lancement). Logique serveur extraite et testée dans `launcher_core.py` (11 tests).
 **Fixes introduits :** aucun — ADR-007 (launcher pywebview window-only + WebView2 bundlé).
-**Points ouverts :** vérifs manuelles utilisateur : lancer `launcher.py`/`launcher.exe` → fenêtre+splash+app+chooser, fermeture tue les process (Task Manager) ; `build.bat` pour régénérer `launcher.exe` ; chemins WebView2-absent et prérequis-manquants ; packaging frontend statique (D1) non fait.
+**Suivi :** lancé + buildé avec succès (fenêtre + icône livre OK). Correctifs post-build : détection WebView2 sous `WOW6432Node` (faux négatif → bootstrapper inutile) + lancement non bloquant ; icône fenêtre via `WM_SETICON` + AppUserModelID (mode dev `python launcher.py`) ; chemins absolus `%~dp0` pour `--add-data`/`--icon` PyInstaller (`--specpath build` cassait la résolution relative). `start.bat`/`start-ai.bat` supprimés → `launcher.exe` = entrée unique (le choix Standard/IA vit dans le ModeChooser) ; `README.md` mis à jour.
+**Points ouverts :** packaging frontend statique servi par FastAPI (vrai standalone, D1d) non fait ; chemins WebView2-absent / prérequis-manquants à tester sur une machine fraîche.
 
 ---
 

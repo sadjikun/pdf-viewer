@@ -45,6 +45,15 @@ mkdir -p samples && curl -L -o samples/test.pdf https://arxiv.org/pdf/2510.04871
 
 Et drop `samples/test.pdf` dans la zone d'upload. ~25s de traitement la première fois (Docling + téléchargement modèles RapidOCR ~40 Mo), instantané ensuite via le cache.
 
+### Lancement rapide (Windows)
+
+Après une première installation, plus besoin de lancer les serveurs à la main :
+
+- **`install.bat`** — une seule fois : crée le venv Python + installe les dépendances (Python et npm).
+- **`launcher.exe`** — double-clic : ouvre l'application dans une **fenêtre de bureau** (pywebview). Un splash s'affiche pendant le démarrage des serveurs, puis l'app se charge et propose un choix **Standard** (extraction rapide) / **Mode IA** (Florence-2 + Texify). Fermer la fenêtre arrête tout.
+- **`launcher.bat`** — relance la fenêtre sans reconstruire l'exe (utile en dev).
+- **`build.bat`** — régénère `launcher.exe` après modification de `launcher.py`.
+
 ## Stack
 
 | Couche | Tech |
@@ -129,8 +138,8 @@ pdf-viewer/
 - **Taille max upload** : 100 Mo (constante `MAX_UPLOAD_BYTES` dans `main.py`)
 - **Performance** : ≈25s pour un paper de 12 pages, ≈80s pour 26 pages, sur CPU. Pas adapté à de très gros documents en l'état.
 - **Sur-détection SectionHeader** sur docs admin (CV, formulaires) — Docling classe parfois des fragments inline en titres de section. Bruit visuel, pas de crash.
-- **Pas de packaging Docker / exe** : lancement manuel via `uvicorn` + `npm run dev`.
-- **Pas de tests automatisés backend** (POC, voir Phase 4.6 dans le backlog).
+- **Lancement** : sous Windows, `launcher.exe` (fenêtre pywebview) démarre tout en un double-clic. Nécessite toujours le venv + `node_modules` (pas de vrai standalone, pas de Docker) ; sinon lancement manuel `uvicorn` + `npm run dev`.
+- **Tests** : suite pytest sur les zones sensibles (annotations durables, export fiche, launcher) — pas une couverture exhaustive : `backend/.venv/Scripts/python.exe -m pytest backend/tests tests/launcher`.
 
 Détail dans [TECHNICAL_DEBT.md](./TECHNICAL_DEBT.md).
 
