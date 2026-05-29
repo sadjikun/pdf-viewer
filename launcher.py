@@ -1,341 +1,121 @@
+"""PDF Viewer — fenêtre de bureau (pywebview).
+Double-clic → splash → démarre backend+frontend → charge l'app.
+Fermer la fenêtre quitte l'application (et arrête les serveurs).
 """
-PDF Viewer — Launcher systray.
-Icône dans la barre des tâches Windows.
-Clic droit : Démarrer Standard / Mode IA / Ouvrir / Arrêter / Quitter.
-"""
-
-import collections
-import os
-import socket
-import subprocess
 import sys
 import threading
 import time
-import webbrowser
 from pathlib import Path
 
-# PyInstaller : trouver le dossier racine du projet depuis le .exe compilé
 if getattr(sys, "frozen", False):
     ROOT = Path(sys.executable).parent
 else:
     ROOT = Path(__file__).parent
+ASSETS = ROOT / "assets"
 
-_CREATE_NO_WINDOW = 0x08000000
+import launcher_core as core
 
-try:
-    import pystray
-    from PIL import Image, ImageDraw
-except ImportError:
+
+def _msgbox(text: str, title: str = "PDF Viewer") -> None:
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "Dépendances manquantes (pystray / Pillow).\n\nRelancez install.bat puis launcher.bat.",
-            "PDF Viewer — Erreur",
-            0x10,
-        )
+        ctypes.windll.user32.MessageBoxW(0, text, title, 0x10)
     except Exception:
         pass
-    sys.exit(1)
 
 
-# ── Icône générée par code ──────────────────────────────────────────────────
+# Book favicon inlined (kept in sync with frontend/public/favicon.svg).
+_BOOK_SVG = """
+<svg class="book" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="48" height="48" rx="10" fill="#0f1117"/>
+  <ellipse cx="24" cy="41" rx="13" ry="2.5" fill="#000" opacity="0.35"/>
+  <path d="M22 9 C18 10 12 11 8 13 L8 37 C12 35 18 35.5 22 37 Z" fill="#e8edf8"/>
+  <path d="M26 9 C30 10 36 11 40 13 L40 37 C36 35 30 35.5 26 37 Z" fill="#e8edf8"/>
+  <rect x="21.5" y="9" width="5" height="28" rx="2.5" fill="#ff8c00"/>
+  <rect x="10" y="14.5" width="10" height="3.5" rx="1.75" fill="#ff8c00" opacity="0.22"/>
+  <rect x="10.5" y="15.5" width="9" height="1.5" rx="0.75" fill="#ff8c00" opacity="0.9"/>
+  <path d="M38 14.5 L41 17 L38 19.5 Z" fill="#ff8c00" opacity="0.85"/>
+</svg>
+"""
 
-def _make_icon(state: str) -> Image.Image:
-    """
-    Icône 64×64 : silhouette de document PDF + dot de statut coloré.
-    state : 'stopped' | 'starting' | 'ready'
-    """
-    dot_colors = {"stopped": "#6b7280", "starting": "#f59e0b", "ready": "#22c55e"}
-    size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    # Fond arrondi sombre
-    d.rounded_rectangle([1, 1, size - 2, size - 2], radius=14, fill="#1a1a3e")
-    # Corps du document (coin plié en haut à droite)
-    d.polygon([(12, 8), (38, 8), (38, 20), (50, 20), (50, 54), (12, 54)], fill="#3730a3")
-    d.polygon([(38, 8), (50, 20), (38, 20)], fill="#6366f1")
-    # Lignes de texte
-    for y_offset in [27, 33, 39]:
-        d.rectangle([16, y_offset, 36, y_offset + 3], fill="#818cf8")
-    d.rectangle([16, 45, 28, 48], fill="#6366f1")
-    # Dot de statut (bas-droite)
-    color = dot_colors.get(state, "#6b7280")
-    d.ellipse([37, 37, 61, 61], fill="#0f0f23")   # halo sombre
-    d.ellipse([40, 40, 59, 59], fill=color)
-    return img
-
-
-# ── Backend API ─────────────────────────────────────────────────────────────
-
-class LauncherAPI:
-    def __init__(self):
-        self._backend_proc = None
-        self._frontend_proc = None
-        self._backend_port: int | None = None
-        self._frontend_port: int | None = None
-        self._backend_status = "stopped"    # stopped | starting | ready
-        self._frontend_status = "stopped"
-        self._lock = threading.Lock()
-        self.on_state_change = None         # callable mis à jour par main()
-
-    # ── Helpers ──────────────────────────────────────────────────────────
-
-    def _find_free_port(self, candidates: list) -> int | None:
-        for port in candidates:
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(("127.0.0.1", port))
-                    return port
-            except OSError:
-                continue
-        return None
-
-    def _notify(self):
-        if self.on_state_change:
-            try:
-                self.on_state_change()
-            except Exception:
-                pass
-
-    def _read_output(self, proc, label: str):
-        try:
-            for raw in proc.stdout:
-                line = raw.rstrip()
-                if not line:
-                    continue
-                changed = False
-                with self._lock:
-                    if label == "backend" and "Application startup complete" in line:
-                        if self._backend_status != "ready":
-                            self._backend_status = "ready"
-                            changed = True
-                    elif label == "frontend" and (
-                        "ready in" in line or "Local:" in line
-                    ):
-                        if self._frontend_status != "ready":
-                            self._frontend_status = "ready"
-                            changed = True
-                if changed:
-                    self._notify()
-        except Exception:
-            pass
-
-    # ── État ─────────────────────────────────────────────────────────────
-
-    def is_stopped(self) -> bool:
-        with self._lock:
-            return (
-                self._backend_status == "stopped"
-                and self._frontend_status == "stopped"
-            )
-
-    def is_starting(self) -> bool:
-        with self._lock:
-            return (
-                self._backend_status == "starting"
-                or self._frontend_status == "starting"
-            )
-
-    def is_running(self) -> bool:
-        with self._lock:
-            return (
-                self._backend_status == "ready"
-                and self._frontend_status == "ready"
-            )
-
-    def get_url(self) -> str | None:
-        with self._lock:
-            if (
-                self._backend_status == "ready"
-                and self._frontend_status == "ready"
-            ):
-                return f"http://127.0.0.1:{self._frontend_port}"
-        return None
-
-    # ── Actions ───────────────────────────────────────────────────────────
-
-    def start(self, mode: str) -> bool:
-        venv_python = ROOT / "backend" / ".venv" / "Scripts" / "python.exe"
-        if not venv_python.exists() or not (ROOT / "frontend" / "node_modules").exists():
-            return False
-
-        bp = self._find_free_port([8000, 8001, 8002, 8003, 8080, 8888])
-        fp = self._find_free_port([5442, 5443, 5444, 5445, 5446])
-        if bp is None or fp is None:
-            return False
-
-        (ROOT / "frontend" / ".env.local").write_text(
-            f"VITE_API_BASE=http://127.0.0.1:{bp}\n", encoding="utf-8"
-        )
-
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-
-        with self._lock:
-            self._backend_status = "starting"
-            self._frontend_status = "starting"
-            self._backend_port = bp
-            self._frontend_port = fp
-
-        self._notify()
-
-        self._backend_proc = subprocess.Popen(
-            [
-                str(venv_python), "-m", "uvicorn", "main:app",
-                "--reload", "--reload-exclude", ".venv",
-                "--port", str(bp),
-            ],
-            cwd=ROOT / "backend",
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            creationflags=_CREATE_NO_WINDOW,
-        )
-
-        npm = "npm.cmd" if sys.platform == "win32" else "npm"
-        self._frontend_proc = subprocess.Popen(
-            [npm, "run", "dev", "--", "--port", str(fp), "--host", "127.0.0.1"],
-            cwd=ROOT / "frontend",
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            creationflags=_CREATE_NO_WINDOW,
-        )
-
-        threading.Thread(
-            target=self._read_output, args=(self._backend_proc, "backend"), daemon=True
-        ).start()
-        threading.Thread(
-            target=self._read_output, args=(self._frontend_proc, "frontend"), daemon=True
-        ).start()
-        return True
-
-    def stop(self):
-        try:
-            import psutil
-            _psutil = True
-        except ImportError:
-            _psutil = False
-
-        for proc in [self._backend_proc, self._frontend_proc]:
-            if proc is None:
-                continue
-            try:
-                if _psutil:
-                    parent = psutil.Process(proc.pid)
-                    kids = parent.children(recursive=True)
-                    for k in kids:
-                        try:
-                            k.terminate()
-                        except Exception:
-                            pass
-                    parent.terminate()
-                    time.sleep(0.3)
-                    for k in kids:
-                        try:
-                            if k.is_running():
-                                k.kill()
-                        except Exception:
-                            pass
-                    try:
-                        if parent.is_running():
-                            parent.kill()
-                    except Exception:
-                        pass
-                else:
-                    proc.terminate()
-                    try:
-                        proc.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-            except Exception:
-                pass
-
-        with self._lock:
-            self._backend_proc = None
-            self._frontend_proc = None
-            self._backend_port = None
-            self._frontend_port = None
-            self._backend_status = "stopped"
-            self._frontend_status = "stopped"
-
-        self._notify()
+_SPLASH_CSS = """
+html,body{height:100%;margin:0;background:#0f1117;color:#e8edf8;
+font-family:system-ui,Segoe UI,sans-serif;display:flex;flex-direction:column;
+align-items:center;justify-content:center;gap:18px}
+.book{width:96px;height:96px}
+.spin{width:34px;height:34px;border:3px solid #2a2f3a;border-top-color:#ff8c00;
+border-radius:50%;animation:r .9s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}
+.msg{font-size:16px;opacity:.9}
+.sub{font-size:12px;opacity:.5;max-width:440px;text-align:center;line-height:1.5}
+#err{color:#ff8c00;font-size:14px;max-width:480px;text-align:center;white-space:pre-wrap}
+"""
 
 
-# ── Systray ──────────────────────────────────────────────────────────────────
-
-def main():
-    api = LauncherAPI()
-
-    # Fabrique de callbacks pour éviter le piège de la closure en boucle
-    def _make_start(mode: str):
-        def action(icon, item):
-            threading.Thread(target=api.start, args=(mode,), daemon=True).start()
-        return action
-
-    def _open(icon, item):
-        url = api.get_url()
-        if url:
-            webbrowser.open(url)
-
-    def _stop(icon, item):
-        threading.Thread(target=api.stop, daemon=True).start()
-
-    def _quit(icon, item):
-        api.stop()
-        icon.stop()
-
-    menu = pystray.Menu(
-        pystray.MenuItem(
-            "  Démarrer",
-            _make_start("standard"),
-            visible=lambda item: api.is_stopped(),
-        ),
-        pystray.MenuItem(
-            "  Démarrage en cours…",
-            None,
-            enabled=False,
-            visible=lambda item: api.is_starting(),
-        ),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem(
-            "  Ouvrir l'application",
-            _open,
-            default=True,
-            visible=lambda item: api.is_running(),
-        ),
-        pystray.MenuItem(
-            "  Arrêter",
-            _stop,
-            visible=lambda item: api.is_running(),
-        ),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quitter", _quit),
+def _page(title: str, spinner: bool, error: str = "") -> str:
+    spin = '<div class="spin"></div>' if spinner else ""
+    err = f'<div id="err">{error}</div>' if error else ""
+    return (
+        f"<!doctype html><html><head><meta charset='utf-8'>"
+        f"<style>{_SPLASH_CSS}</style></head><body>{_BOOK_SVG}"
+        f"<div class='msg'>{title}</div>"
+        f"<div class='sub'>Chargement des moteurs d'extraction. "
+        f"Le premier lancement peut prendre 20–60 s.</div>{spin}{err}</body></html>"
     )
 
-    icon = pystray.Icon("pdf-viewer", _make_icon("stopped"), "PDF Viewer", menu)
 
-    def on_state_change():
-        if api.is_running():
-            state, title = "ready", "PDF Viewer  —  En ligne"
-        elif api.is_starting():
-            state, title = "starting", "PDF Viewer  —  Démarrage…"
-        else:
-            state, title = "stopped", "PDF Viewer"
-        icon.icon = _make_icon(state)
-        icon.title = title
-        icon.update_menu()
+SPLASH_HTML = _page("Démarrage de PDF Viewer…", spinner=True)
 
-    api.on_state_change = on_state_change
-    icon.run()
+
+def error_html(message: str) -> str:
+    safe = message.replace("&", "&amp;").replace("<", "&lt;")
+    return _page("Impossible de démarrer", spinner=False, error=safe)
+
+
+def main() -> None:
+    import webview
+
+    if not core.ensure_webview2(ASSETS):
+        _msgbox(
+            "Le composant Microsoft WebView2 est requis et n'a pas pu être installé.\n\n"
+            "Installez-le manuellement :\n"
+            "https://developer.microsoft.com/microsoft-edge/webview2/"
+        )
+        return
+
+    window = webview.create_window("PDF Viewer", html=SPLASH_HTML,
+                                   width=1280, height=860)
+    mgr = core.ServerManager(ROOT)
+
+    def boot() -> None:
+        done = {"ok": False}
+
+        def on_ready():
+            done["ok"] = True
+            window.load_url(mgr.frontend_url)
+
+        def on_error(msg):
+            window.load_html(error_html(msg))
+
+        mgr.on_ready = on_ready
+        mgr.on_error = on_error
+        if not mgr.start():
+            return  # on_error already rendered
+        for _ in range(120):           # ~120 s watchdog
+            if done["ok"]:
+                return
+            time.sleep(1)
+        if not done["ok"]:
+            window.load_html(error_html(
+                "Délai dépassé au démarrage (120 s).\n"
+                "Ferme la fenêtre et réessaie."
+            ))
+
+    def on_closed() -> None:
+        threading.Thread(target=mgr.stop, daemon=True).start()
+
+    window.events.closed += on_closed
+    webview.start(boot, gui="edgechromium")
 
 
 if __name__ == "__main__":
