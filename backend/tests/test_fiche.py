@@ -30,6 +30,34 @@ def test_html_has_blockquote_color_and_page():
     assert "p. 5" in html
 
 
+def test_html_escapes_user_controlled_color():
+    """A malicious 'color' must not inject markup into the exported HTML (stored-XSS)."""
+    store = {
+        "highlights": [
+            {"key": "x::1", "color": '"><img src=x onerror=alert(1)>',
+             "text": "ok", "section": "s", "sectionTitle": "S", "page": 1},
+        ],
+        "notes": {},
+    }
+    html = render_html("Doc", store)
+    assert "<img src=x onerror=alert(1)>" not in html  # no live tag
+    assert "&lt;img" in html                            # payload escaped
+    assert "ok" in html                                 # real content still rendered
+
+
+def test_html_uses_hex_color_directly():
+    """Frontend stores hex colors; the export must honor them (not default)."""
+    store = {
+        "highlights": [
+            {"key": "h::1", "color": "#ffe066", "text": "t",
+             "section": "s", "sectionTitle": "S", "page": 1},
+        ],
+        "notes": {},
+    }
+    html = render_html("Doc", store)
+    assert "border-left-color:#ffe066" in html
+
+
 def test_fiche_md_endpoint_contains_highlight(client, doc_id):
     payload = {
         "highlights": [{"key": "rs_1::1", "color": "yellow",

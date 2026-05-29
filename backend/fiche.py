@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 
@@ -34,7 +35,7 @@ def render_markdown(title: str, store: dict) -> str:
         lines.append(f"## {g['title']}")
         lines.append("")
         for h in g["items"]:
-            page = h.get("page", 0)
+            page = _safe_page(h.get("page", 0))
             text = h.get("text", "").strip()
             lines.append(f"- {text} [p. {page}]")
             note = notes.get(h.get("key", ""))
@@ -48,6 +49,26 @@ _COLOR_HEX = {
     "yellow": "#fff3a3", "green": "#b8f0c0",
     "blue": "#b3d9ff", "pink": "#ffc0e0", "orange": "#ffd9a0",
 }
+
+_HEX_RE = re.compile(r"#[0-9a-fA-F]{3,8}\Z")
+
+
+def _safe_page(value: Any) -> int:
+    """Coerce a (possibly user-controlled) page value to a non-negative int."""
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _resolve_color(raw: str) -> str:
+    """Map a stored color (hex like '#ffe066', or a palette name) to a safe hex.
+    The frontend stores hex directly; older/legacy data may use names. Anything
+    unrecognized falls back to the default highlight color."""
+    s = (raw or "").strip()
+    if _HEX_RE.match(s):
+        return s
+    return _COLOR_HEX.get(s, "#fff3a3")
 
 
 def render_html(title: str, store: dict) -> str:
@@ -66,10 +87,11 @@ def render_html(title: str, store: dict) -> str:
     for g in _group_by_section(store):
         parts.append(f"<h2>{esc(g['title'])}</h2>")
         for h in g["items"]:
-            color = _COLOR_HEX.get(h.get("color", ""), "#fff3a3")
-            page = h.get("page", 0)
+            raw_color = str(h.get("color", "") or "yellow")
+            color = _resolve_color(raw_color)
+            page = _safe_page(h.get("page", 0))
             text = esc(h.get("text", "").strip())
-            color_name = h.get("color", "yellow")
+            color_name = esc(raw_color)  # user-controlled → escape (stored-XSS guard)
             parts.append(
                 f'<blockquote class="hl-{color_name}" style="border-left-color:{color}">{text} '
                 f'<span class="page">p. {page}</span></blockquote>'

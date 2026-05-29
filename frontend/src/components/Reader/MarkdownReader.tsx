@@ -1389,7 +1389,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       }
       if (cancelled) return;
 
-      if (store && store.highlights.length > 0) {
+      if (store && (store.highlights?.length ?? 0) > 0) {
         setHighlights(store.highlights as Highlight[]);
         setNotes(store.notes ?? {});
       } else {
