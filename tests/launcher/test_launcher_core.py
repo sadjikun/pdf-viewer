@@ -75,6 +75,26 @@ def test_webview2_installed_true(monkeypatch):
     assert core.webview2_installed() is True
 
 
+def test_webview2_installed_via_wow6432node(monkeypatch):
+    wow = core.WEBVIEW2_CLIENT_KEYS[1]  # the WOW6432Node path
+
+    class FakeKey:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class FakeWinreg:
+        HKEY_LOCAL_MACHINE = 0
+        HKEY_CURRENT_USER = 1
+        def OpenKey(self, hive, key):
+            if key == wow:
+                return FakeKey()
+            raise OSError("absent at native path")
+        def QueryValueEx(self, k, name): return ("119.0.0.1", 1)
+
+    monkeypatch.setitem(sys.modules, "winreg", FakeWinreg())
+    assert core.webview2_installed() is True
+
+
 def test_webview2_installed_false(monkeypatch):
     class FakeWinreg:
         HKEY_LOCAL_MACHINE = 0

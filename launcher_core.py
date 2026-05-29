@@ -14,10 +14,14 @@ from pathlib import Path
 _CREATE_NO_WINDOW = 0x08000000
 BACKEND_PORTS = [8000, 8001, 8002, 8003, 8080, 8888]
 FRONTEND_PORTS = [5442, 5443, 5444, 5445, 5446]
-WEBVIEW2_CLIENT_KEY = (
-    r"SOFTWARE\Microsoft\EdgeUpdate\Clients"
-    r"\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-)
+_WEBVIEW2_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+# Native path AND the 32-bit (WOW6432Node) view: per-machine Evergreen installs
+# on 64-bit Windows live under WOW6432Node, invisible to a 64-bit process at the
+# native path.
+WEBVIEW2_CLIENT_KEYS = [
+    rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_GUID}",
+    rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_GUID}",
+]
 
 
 def pick_port(candidates: list[int]) -> int | None:
@@ -59,19 +63,22 @@ def missing_prereqs(root: Path) -> list[str]:
 
 
 def webview2_installed() -> bool:
-    """True if the WebView2 Evergreen runtime is registered (HKLM or HKCU)."""
+    """True if the WebView2 Evergreen runtime is registered.
+    Checks HKLM + HKCU across the native and WOW6432Node paths (64-bit machines
+    put the per-machine install under WOW6432Node)."""
     try:
         import winreg
     except ImportError:
         return True  # non-Windows: nothing to install
     for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-        try:
-            with winreg.OpenKey(hive, WEBVIEW2_CLIENT_KEY) as k:
-                pv, _ = winreg.QueryValueEx(k, "pv")
-                if pv and pv != "0.0.0.0":
-                    return True
-        except OSError:
-            continue
+        for sub in WEBVIEW2_CLIENT_KEYS:
+            try:
+                with winreg.OpenKey(hive, sub) as k:
+                    pv, _ = winreg.QueryValueEx(k, "pv")
+                    if pv and pv != "0.0.0.0":
+                        return True
+            except OSError:
+                continue
     return False
 
 

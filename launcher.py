@@ -74,13 +74,12 @@ def error_html(message: str) -> str:
 def main() -> None:
     import webview
 
-    if not core.ensure_webview2(ASSETS):
-        _msgbox(
-            "Le composant Microsoft WebView2 est requis et n'a pas pu être installé.\n\n"
-            "Installez-le manuellement :\n"
-            "https://developer.microsoft.com/microsoft-edge/webview2/"
-        )
-        return
+    # Best-effort: only run the bundled installer if our probe says WebView2 is
+    # missing. Do NOT hard-gate on it — the probe can false-negative (e.g. a
+    # per-machine install under WOW6432Node) and the runtime may be present
+    # anyway. We try to launch regardless and only error if the window can't open.
+    if not core.webview2_installed():
+        core.ensure_webview2(ASSETS)
 
     window = webview.create_window("PDF Viewer", html=SPLASH_HTML,
                                    width=1280, height=860)
@@ -111,10 +110,19 @@ def main() -> None:
             ))
 
     # webview.start() blocks until the window is closed, then returns. Stop the
-    # servers SYNCHRONOUSLY here — doing it in a daemon thread on the 'closed'
-    # event races the process exit and can orphan uvicorn/node (invariant I-1).
-    webview.start(boot, gui="edgechromium")
-    mgr.stop()
+    # servers SYNCHRONOUSLY (finally) — a daemon thread on the 'closed' event
+    # races process exit and can orphan uvicorn/node (invariant I-1).
+    try:
+        webview.start(boot, gui="edgechromium")
+    except Exception as exc:
+        _msgbox(
+            "Impossible d'ouvrir la fenêtre — le composant Microsoft WebView2 "
+            "semble manquant ou inutilisable.\n\n"
+            f"Détail : {exc}\n\n"
+            "Installez-le : https://developer.microsoft.com/microsoft-edge/webview2/"
+        )
+    finally:
+        mgr.stop()
 
 
 if __name__ == "__main__":
