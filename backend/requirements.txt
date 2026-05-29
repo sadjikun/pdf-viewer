@@ -114,6 +114,8 @@ markitdown[all]>=0.1.1
 ocrmypdf>=17.0
 pytesseract>=0.3.10
 pix2tex==0.1.4
+# Moteur LaTeX-OCR alternatif (FORMULA_ENGINE=texify|pix2tex|auto). Plus précis sur formules complexes.
+texify>=0.2
 
 # Captioning IA des figures (optionnel, opt-in) — Florence-2 via transformers/torch
 einops>=0.8
