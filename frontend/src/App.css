@@ -119,6 +119,27 @@
   font-weight: 600;
 }
 
+.app-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.app-view-toggle button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.app-view-toggle button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .app-theme-select {
   background: var(--card);
   border: 1px solid var(--border);

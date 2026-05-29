@@ -59,6 +59,12 @@ export interface DocStatus {
 
 export type ExtractionMode = "native" | "docling" | "fast" | "markitdown";
 
+export interface HtmlManifestEntry {
+  start: number;
+  end: number;
+  file: string;
+}
+
 export interface LibraryDocument {
   doc_id: string;
   title: string;

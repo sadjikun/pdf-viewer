@@ -1,6 +1,6 @@
 import type { DocResult, DocStatus, LibraryResponse, ProcessingResponse } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
 export class ApiError extends Error {
   status: number;
@@ -62,4 +62,18 @@ export function figureUrl(docId: string, figId: string): string {
 
 export function markdownUrl(docId: string): string {
   return `${API_BASE}/doc/${docId}/markdown`;
+}
+
+// Endpoints HTML Docling (export pleine fidélité). Absents tant que la PR
+// "Reader backend HTML" n'est pas mergée → le Reader retombe sur /markdown.
+export function htmlUrl(docId: string): string {
+  return `${API_BASE}/doc/${docId}/html`;
+}
+
+export function htmlManifestUrl(docId: string): string {
+  return `${API_BASE}/doc/${docId}/html-manifest`;
+}
+
+export function htmlPartUrl(docId: string, startPage: number): string {
+  return `${API_BASE}/doc/${docId}/html-part/${startPage}`;
 }
