@@ -2350,3 +2350,44 @@ mark.reader-sm.is-active {
   font-weight: 700;
 }
 
+/* ── T9: Notes/Annotations list panel ────────────────────────────────────── */
+.reader-notes-count {
+  margin-left: .35rem; background: #555; color: #fff; border-radius: 999px;
+  padding: 0 .4rem; font-size: .75em;
+}
+.reader-notes-list {
+  position: absolute; right: 1rem; top: 4rem; width: 320px; max-height: 70vh;
+  overflow-y: auto; background: var(--bg2, #fff); border: 1px solid var(--bd, #ddd);
+  border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.18); padding: .75rem;
+  z-index: 40; color: var(--tx, #171717);
+}
+.reader-notes-list__head {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem;
+}
+.reader-notes-list__head button { background: none; border: none; cursor: pointer; font-size: 1rem; color: inherit; }
+.reader-notes-list__empty { color: #888; font-style: italic; }
+.reader-notes-list__section h4 { margin: .5rem 0 .25rem; font-size: .9em; color: var(--tx3, #666); }
+.reader-notes-list__item {
+  display: flex; gap: .5rem; align-items: flex-start; width: 100%; text-align: left;
+  background: none; border: none; padding: .4rem; border-radius: 6px; cursor: pointer; color: inherit;
+}
+.reader-notes-list__item:hover { background: rgba(0,0,0,.05); }
+.reader-notes-list__swatch {
+  width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; margin-top: .2rem;
+}
+.reader-notes-list__text { flex: 1; font-size: .85em; line-height: 1.35; }
+.reader-notes-list__note { color: var(--tx3, #777); }
+.reader-notes-list__page { color: #999; font-size: .8em; flex: 0 0 auto; }
+
+/* ── T10: Fiche export button ─────────────────────────────────────────────── */
+.reader-fiche-wrap { position: relative; display: inline-block; }
+.reader-fiche-menu {
+  position: absolute; right: 0; top: 100%; margin-top: .25rem; background: var(--bg2, #fff);
+  border: 1px solid var(--bd, #ddd); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.15);
+  display: flex; flex-direction: column; z-index: 45; min-width: 120px;
+}
+.reader-fiche-menu a {
+  padding: .5rem .75rem; text-decoration: none; color: var(--tx, #222);
+}
+.reader-fiche-menu a:hover { background: rgba(0,0,0,.06); }
+

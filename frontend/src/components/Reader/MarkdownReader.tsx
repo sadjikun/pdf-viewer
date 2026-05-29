@@ -1221,6 +1221,8 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   const [hlColor, setHlColor] = useState("#ffe066");
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [showNotePanel, setShowNotePanel] = useState(false);
+  const [showNotesList, setShowNotesList] = useState(false);
+  const [showFicheMenu, setShowFicheMenu] = useState(false);
 
   // ── TTS ───────────────────────────────────────────────────────────────────
   const [ttsActive, setTtsActive] = useState(false);
@@ -1261,6 +1263,23 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
   // Temps de lecture estimé (200 mots/min)
   const readingMinutes = useMemo(() => Math.ceil(words / 200), [words]);
+
+  // Annotations list grouped by section (T9)
+  const notesListGroups = useMemo(() => {
+    const bySection = new Map<string, { title: string; items: Highlight[]; minPage: number }>();
+    for (const h of highlights) {
+      const sec = h.section ?? "";
+      const title = h.sectionTitle || "Sans section";
+      const g = bySection.get(sec) ?? { title, items: [], minPage: Number.MAX_SAFE_INTEGER };
+      g.items.push(h);
+      g.minPage = Math.min(g.minPage, h.page ?? 0);
+      bySection.set(sec, g);
+    }
+    const groups = Array.from(bySection.values());
+    groups.forEach((g) => g.items.sort((a, b) => (a.page ?? 0) - (b.page ?? 0)));
+    groups.sort((a, b) => a.minPage - b.minPage);
+    return groups;
+  }, [highlights]);
 
   // Focus mode: hide all sections except the active one AND its sub-sections (FIX-070)
   const visibleHtml = useMemo(() => {
@@ -1605,6 +1624,18 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     setActiveNoteKey(null);
     setNoteText("");
   };
+
+  // Scroll to a highlight and open its note panel (T9)
+  const scrollToHighlight = useCallback((key: string) => {
+    const docEl = contentRef.current?.querySelector(".reader-doc");
+    const el = docEl?.querySelector(`.reader-hl[data-key="${CSS.escape(key)}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setActiveNoteKey(key);
+      setShowNotePanel(true);
+      setNoteText(notes[key] ?? "");
+    }
+  }, [notes]);
 
   // Get text for Speech Synthesis
   const getSpeakText = (): string => {
@@ -2824,6 +2855,49 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
             </div>
           )}
 
+          {/* Notes list toggle (T9) */}
+          {renderMode === "html" && (
+            <div className="reader-tbtn-wrap">
+              <button
+                type="button"
+                className={`reader-tbtn${showNotesList ? " is-on" : ""}`}
+                title="Liste des annotations"
+                onClick={() => setShowNotesList((v) => !v)}
+              >
+                <span>📋</span>
+                <span>Notes</span>
+                {highlights.length > 0 && (
+                  <span className="reader-notes-count">{highlights.length}</span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Fiche export (T10) */}
+          {renderMode === "html" && (
+            <div className="reader-tbtn-wrap reader-fiche-wrap">
+              <button
+                type="button"
+                className={`reader-tbtn${showFicheMenu ? " is-on" : ""}`}
+                title="Exporter une fiche de révision"
+                onClick={() => setShowFicheMenu((v) => !v)}
+              >
+                <span>⬇</span>
+                <span>Fiche</span>
+              </button>
+              {showFicheMenu && (
+                <div className="reader-fiche-menu">
+                  <a href={ficheUrl(docId, "html")} download onClick={() => setShowFicheMenu(false)}>
+                    HTML
+                  </a>
+                  <a href={ficheUrl(docId, "md")} download onClick={() => setShowFicheMenu(false)}>
+                    Markdown
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TTS Controls */}
           {renderMode === "html" && (
             <div className="reader-tbtn-wrap">
@@ -3326,6 +3400,43 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
               Enregistrer
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Notes/Annotations list panel (T9) */}
+      {showNotesList && (
+        <div className="reader-notes-list">
+          <div className="reader-notes-list__head">
+            <strong>Annotations</strong>
+            <button type="button" onClick={() => setShowNotesList(false)}>✕</button>
+          </div>
+          {highlights.length === 0 ? (
+            <p className="reader-notes-list__empty">Aucune annotation pour ce document.</p>
+          ) : (
+            notesListGroups.map((g) => (
+              <div key={g.title} className="reader-notes-list__section">
+                <h4>{g.title}</h4>
+                {g.items.map((h) => (
+                  <button
+                    key={h.key}
+                    type="button"
+                    className="reader-notes-list__item"
+                    onClick={() => scrollToHighlight(h.key)}
+                  >
+                    <span
+                      className="reader-notes-list__swatch"
+                      style={{ backgroundColor: h.color }}
+                    />
+                    <span className="reader-notes-list__text">
+                      {h.text.length > 80 ? h.text.slice(0, 80) + "…" : h.text}
+                      {notes[h.key] && <em className="reader-notes-list__note"> — {notes[h.key]}</em>}
+                    </span>
+                    {h.page ? <span className="reader-notes-list__page">p.{h.page}</span> : null}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       )}
 
