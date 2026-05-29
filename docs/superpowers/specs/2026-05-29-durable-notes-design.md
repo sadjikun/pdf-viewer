@@ -65,7 +65,7 @@ One file per document: `backend/cache/{doc_id}/annotations.json`
     }
   ],
   "notes": {
-    "rs_1_3::a1b2c3d4": { "text": "Revoir le coefficient partiel.", "createdAt": 1748505600000 }
+    "rs_1_3::a1b2c3d4": "Revoir le coefficient partiel."
   },
   "saved_at": 1748505600000
 }
@@ -136,11 +136,10 @@ interface StoredHighlight {
   section: string; sectionTitle: string; page: number;
   prefix?: string; suffix?: string;
 }
-interface StoredNote { text: string; createdAt: number }
 interface AnnotationStore {
   version: number;
   highlights: StoredHighlight[];
-  notes: Record<string, StoredNote>;
+  notes: Record<string, string>;   // key → note text (see DD-5)
   saved_at: number;
 }
 ```
@@ -249,6 +248,12 @@ Implemented as plain anchor downloads hitting the backend endpoint (§4).
   fiche generator (auto revision sheets) and the user can export without opening the Reader.
 - **DD-4 — `prefix`/`suffix` are optional.** Stored when cheaply available; restoration
   degrades gracefully to section-scoped `text`-only search when absent.
+- **DD-5 — Notes are `Record<key, string>`, not `{text, createdAt}`.** The live
+  `MarkdownReader` state is already `Record<string, string>` (a note value is the plain
+  string). Keeping that shape end-to-end (state, localStorage, server JSON) avoids a
+  risky refactor of the heavily-FIXed component and a localStorage migration of the note
+  map. `createdAt` is unused (nothing displays it), so it is dropped. The notes panel
+  orders by the highlight's `page`, not by note creation time.
 
 ---
 
