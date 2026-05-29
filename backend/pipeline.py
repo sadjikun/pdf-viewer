@@ -25,7 +25,9 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+ProgressCallback = Callable[[int, str], None]
 
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -289,12 +291,21 @@ def _construire_arbre(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return racine
 
 
-def convertir_pdf(pdf_path: Path, out_dir: Path) -> dict[str, Any]:
-    """Convertit un PDF avec Docling et exporte la structure + figures."""
+def convertir_pdf(
+    pdf_path: Path,
+    out_dir: Path,
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    """Convertit un PDF avec Docling et exporte la structure + figures.
+
+    progress_callback(percent, message) est appelé aux étapes clés si fourni.
+    """
+    if progress_callback:
+        progress_callback(5, "Analyse préliminaire du PDF...")
     n_pages = _count_pages(pdf_path)
     if n_pages > BATCH_THRESHOLD:
         log.info("%s — %d pages, batch, OCR par tranche", pdf_path.name, n_pages)
-        return _convertir_batch(pdf_path, out_dir, n_pages)
+        return _convertir_batch(pdf_path, out_dir, n_pages, progress_callback)
 
     do_ocr = _needs_ocr(pdf_path)
     log.info(
@@ -303,29 +314,42 @@ def convertir_pdf(pdf_path: Path, out_dir: Path) -> dict[str, Any]:
         "natif" if not do_ocr else "scanne/mixte",
         "ON" if do_ocr else "OFF",
     )
-    return _convertir_simple(pdf_path, out_dir, do_ocr)
+    return _convertir_simple(pdf_path, out_dir, do_ocr, progress_callback)
 
 
-def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dict[str, Any]:
+def _convertir_simple(
+    pdf_path: Path,
+    out_dir: Path,
+    do_ocr: bool = True,
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, Any]:
     """Conversion single-pass pour les PDFs courts."""
+    if progress_callback:
+        progress_callback(15, "Analyse layout & OCR Docling...")
     converter = _converter(do_ocr=do_ocr)
     doc = converter.convert(str(pdf_path)).document
 
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
 
+    if progress_callback:
+        progress_callback(80, "Extraction pages, figures, tables...")
     pages = _extraire_pages(doc)
     figures = _extraire_figures(doc, figures_dir)
     tables = _extraire_tables(doc)
     sections = _extraire_sections(doc)
     outline = _construire_arbre(sections)
 
+    if progress_callback:
+        progress_callback(95, "Export Markdown...")
     try:
         md = doc.export_to_markdown()
         (out_dir / "result.md").write_text(md, encoding="utf-8")
     except Exception:
         log.exception("Echec export markdown single-pass pour %s", pdf_path.name)
 
+    if progress_callback:
+        progress_callback(100, "Traitement terminé.")
     return {
         "pages": pages,
         "outline": outline,
@@ -339,6 +363,7 @@ def _convertir_simple(pdf_path: Path, out_dir: Path, do_ocr: bool = True) -> dic
 
 def _convertir_batch(
     pdf_path: Path, out_dir: Path, n_pages: int,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Conversion par tranches pour les gros PDFs (évite la saturation RAM)."""
     figures_dir = out_dir / "figures"
@@ -358,6 +383,10 @@ def _convertir_batch(
     for batch_start in range(1, n_pages + 1, BATCH_SIZE):
         batch_end = min(batch_start + BATCH_SIZE - 1, n_pages)
         page_offset = batch_start - 1
+
+        if progress_callback:
+            pct = 15 + int((batch_start - 1) / n_pages * 75)  # 15 → 90 sur l'ensemble des tranches
+            progress_callback(pct, f"Traitement pages {batch_start}–{batch_end} / {n_pages}...")
 
         tmp_pdf = out_dir / f"_batch_{batch_start}_{batch_end}.pdf"
         try:
@@ -396,6 +425,8 @@ def _convertir_batch(
         finally:
             tmp_pdf.unlink(missing_ok=True)
 
+    if progress_callback:
+        progress_callback(95, "Reconstruction du sommaire & export Markdown...")
     outline = _construire_arbre(all_sections)
 
     try:
@@ -403,6 +434,9 @@ def _convertir_batch(
         (out_dir / "result.md").write_text(md, encoding="utf-8")
     except Exception:
         log.exception("Echec ecriture markdown batch pour %s", pdf_path.name)
+
+    if progress_callback:
+        progress_callback(100, "Traitement terminé.")
 
     return {
         "pages": all_pages,

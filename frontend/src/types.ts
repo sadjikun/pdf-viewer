@@ -40,3 +40,19 @@ export interface DocResult {
   figures: Figure[];
   tables: TableItem[];
 }
+
+// Réponse de POST /process quand le traitement démarre en arrière-plan.
+export interface ProcessingResponse {
+  doc_id: string;
+  status: "processing";
+  progress: number;
+  message: string;
+}
+
+// Réponse de GET /doc/{id}/status.
+export interface DocStatus {
+  status: "ready" | "processing" | "failed" | "not_found";
+  progress?: number;
+  message?: string;
+  error?: string;
+}
