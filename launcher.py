@@ -23,6 +23,45 @@ def _msgbox(text: str, title: str = "PDF Viewer") -> None:
         pass
 
 
+def _apply_window_icon() -> None:
+    """Force the window/taskbar icon to the book (assets/app.ico) on Windows.
+    pywebview shows the host-process icon (python.exe) when run unfrozen; this
+    overrides it via WM_SETICON. No-op if anything is unavailable. Runs on the
+    boot thread, so the retry loop's sleeps don't block the GUI."""
+    ico = ASSETS / "app.ico"
+    if sys.platform != "win32" or not ico.exists():
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return
+    u32 = ctypes.windll.user32
+    u32.FindWindowW.restype = wintypes.HWND
+    u32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    u32.LoadImageW.restype = wintypes.HANDLE
+    u32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR,
+                               wintypes.UINT, ctypes.c_int, ctypes.c_int,
+                               wintypes.UINT]
+    u32.SendMessageW.restype = ctypes.c_long
+    u32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                 wintypes.WPARAM, wintypes.LPARAM]
+    IMAGE_ICON, LR_LOADFROMFILE = 1, 0x10
+    WM_SETICON, ICON_SMALL, ICON_BIG = 0x0080, 0, 1
+    path = str(ico)
+    for _ in range(25):  # window may not exist yet just after start(); retry ~5s
+        hwnd = u32.FindWindowW(None, "PDF Viewer")
+        if hwnd:
+            hbig = u32.LoadImageW(None, path, IMAGE_ICON, 32, 32, LR_LOADFROMFILE)
+            hsmall = u32.LoadImageW(None, path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+            if hbig:
+                u32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, hbig)
+            if hsmall:
+                u32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hsmall)
+            return
+        time.sleep(0.2)
+
+
 # Book favicon inlined (kept in sync with frontend/public/favicon.svg).
 _BOOK_SVG = """
 <svg class="book" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -81,11 +120,19 @@ def main() -> None:
     if not core.webview2_installed():
         core.ensure_webview2(ASSETS)
 
+    # Distinct taskbar identity so Windows uses our window icon (not python.exe's).
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("pdfviewer.launcher")
+    except Exception:
+        pass
+
     window = webview.create_window("PDF Viewer", html=SPLASH_HTML,
                                    width=1280, height=860)
     mgr = core.ServerManager(ROOT)
 
     def boot() -> None:
+        _apply_window_icon()  # swap python.exe's icon for the book
         done = {"ok": False}
 
         def on_ready():
