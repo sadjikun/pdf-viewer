@@ -77,6 +77,47 @@ def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def _clean_title(title: str | None) -> str:
+    if not title:
+        return ""
+    return re.sub(
+        r"^(Microsoft\s+(?:Word|PowerPoint|Excel)\s*-\s*)", "", title, flags=re.IGNORECASE
+    ).strip()
+
+
+def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """Construit une entrée de catalogue à partir d'un result.json en cache."""
+    source_files = sorted(ddir.glob("source.*"))
+    source = source_files[0] if source_files else None
+    result_file = ddir / "result.json"
+    mtime = result_file.stat().st_mtime if result_file.exists() else ddir.stat().st_mtime
+    filename = result.get("filename") or (source.name if source else doc_id)
+    title = _clean_title(result.get("pdf_title")) or Path(filename).stem or doc_id
+
+    figures = result.get("figures") or []
+    cover_figure_id = None
+    if figures:
+        first_id = figures[0].get("id")
+        if first_id and (ddir / "figures" / f"{first_id}.png").exists():
+            cover_figure_id = first_id
+
+    return {
+        "doc_id": doc_id,
+        "title": title,
+        "filename": filename,
+        "file_type": source.suffix.lstrip(".").lower() if source else "pdf",
+        "extraction_mode": result.get("extraction_mode", "docling"),
+        "n_pages": result.get("n_pages", 0),
+        "n_figures": result.get("n_figures", len(figures)),
+        "n_tables": result.get("n_tables", len(result.get("tables") or [])),
+        "n_sections": len(result.get("outline") or []),
+        "modified_at": mtime,
+        "size_bytes": source.stat().st_size if source and source.exists() else None,
+        "cover_figure_id": cover_figure_id,
+        "needs_reprocess": False,  # versioning du cache hors scope de cette PR
+    }
+
+
 def update_task_progress(doc_id: str, progress: int, message: str) -> None:
     """Callback de progression invoqué par le pipeline en arrière-plan."""
     with tasks_lock:
@@ -84,7 +125,7 @@ def update_task_progress(doc_id: str, progress: int, message: str) -> None:
             active_tasks[doc_id].update({"progress": progress, "message": message})
 
 
-def run_pipeline_bg(doc_id: str, pdf_path: Path, ddir: Path) -> None:
+def run_pipeline_bg(doc_id: str, pdf_path: Path, ddir: Path, filename: str) -> None:
     """Exécute le pipeline Docling en arrière-plan et écrit result.json ou error.json."""
     from pipeline import convertir_pdf  # import différé : Docling est lent à charger
 
@@ -94,6 +135,7 @@ def run_pipeline_bg(doc_id: str, pdf_path: Path, ddir: Path) -> None:
             progress_callback=lambda p, m: update_task_progress(doc_id, p, m),
         )
         result["doc_id"] = doc_id
+        result["filename"] = filename
         _write_json_atomic(ddir / "result.json", result)
     except Exception as e:
         error_msg = f"{type(e).__name__}: {e}"
@@ -111,6 +153,52 @@ def run_pipeline_bg(doc_id: str, pdf_path: Path, ddir: Path) -> None:
 @app.get("/")
 def root() -> dict[str, str]:
     return {"status": "ok", "service": "pdf-viewer-api"}
+
+
+@app.get("/library")
+def get_library() -> JSONResponse:
+    """Catalogue local construit depuis le cache disque + traitements en cours."""
+    with tasks_lock:
+        processing = [
+            {
+                "doc_id": doc_id,
+                "status": "processing",
+                "progress": task.get("progress", 0),
+                "message": task.get("message", ""),
+            }
+            for doc_id, task in active_tasks.items()
+        ]
+
+    documents: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+
+    for item in CACHE_DIR.iterdir():
+        if not item.is_dir() or not DOC_ID_RE.fullmatch(item.name):
+            continue
+        result_path = item / "result.json"
+        error_path = item / "error.json"
+        if result_path.exists():
+            try:
+                with open(result_path, encoding="utf-8") as f:
+                    result = json.load(f)
+                documents.append(_library_item_from_result(item.name, item, result))
+            except (OSError, json.JSONDecodeError) as e:
+                failed.append({"doc_id": item.name, "status": "failed", "error": f"Cache illisible: {e}"})
+        elif error_path.exists():
+            try:
+                with open(error_path, encoding="utf-8") as f:
+                    error = json.load(f).get("error", "Erreur d'extraction inconnue")
+            except (OSError, json.JSONDecodeError):
+                error = "Erreur d'extraction inconnue"
+            failed.append({"doc_id": item.name, "status": "failed", "error": error})
+
+    documents.sort(key=lambda d: d.get("modified_at") or 0, reverse=True)
+    return JSONResponse({
+        "documents": documents,
+        "processing": processing,
+        "failed": failed,
+        "total": len(documents),
+    })
 
 
 @app.post("/process")
@@ -161,7 +249,7 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
             "message": "Fichier reçu, démarrage de l'analyse...",
         }
 
-    background_tasks.add_task(run_pipeline_bg, doc_id, pdf_path, ddir)
+    background_tasks.add_task(run_pipeline_bg, doc_id, pdf_path, ddir, file.filename)
 
     return JSONResponse({
         "doc_id": doc_id,
