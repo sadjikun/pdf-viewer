@@ -19,31 +19,61 @@ import "./App.css";
 const LS_KEY = "pdf-viewer:lastDocId";
 const THEME_KEY = "pdf-viewer:theme";
 type Tab = "outline" | "gallery" | "tables";
-type Theme = "dark" | "light";
 const TAB_TITLES: Record<Tab, string> = {
   outline: "Sommaire",
   gallery: "Galerie",
   tables: "Tables",
 };
 
-function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
+const THEMES = [
+  { id: "glassmorphism", label: "Glassmorphism" },
+  { id: "minimalist", label: "Minimalist Paper" },
+  { id: "technical", label: "Technical Grid" },
+  { id: "vintage", label: "ArXiv Vintage" },
+  { id: "oled", label: "OLED Deep Space" },
+  { id: "forest", label: "Forest Lab" },
+  { id: "cstb", label: "CSTB" },
+  { id: "swiss", label: "Swiss Grid" },
+  { id: "eink", label: "E-Ink Paper" },
+  { id: "hud", label: "Engineering HUD" },
+] as const;
+type AppTheme = (typeof THEMES)[number]["id"];
+const DEFAULT_THEME: AppTheme = "glassmorphism";
+
+function useAppTheme() {
+  const [theme, setTheme] = useState<AppTheme>(() => {
     const saved = localStorage.getItem(THEME_KEY);
-    return saved === "light" ? "light" : "dark";
+    return THEMES.some((t) => t.id === saved) ? (saved as AppTheme) : DEFAULT_THEME;
   });
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    const el = document.documentElement;
+    THEMES.forEach((t) => el.classList.remove(`theme-${t.id}`));
+    el.classList.add(`theme-${theme}`);
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
-  const toggle = useCallback(
-    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
-    [],
+  return { theme, setTheme };
+}
+
+function ThemeSelect({ theme, setTheme }: { theme: AppTheme; setTheme: (t: AppTheme) => void }) {
+  return (
+    <select
+      className="app-theme-select"
+      value={theme}
+      onChange={(e) => setTheme(e.target.value as AppTheme)}
+      aria-label="Choisir le thème"
+      title="Thème"
+    >
+      {THEMES.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.label}
+        </option>
+      ))}
+    </select>
   );
-  return { theme, toggle };
 }
 
 function App() {
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { theme, setTheme } = useAppTheme();
   const [doc, setDoc] = useState<DocResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -230,9 +260,7 @@ function App() {
       <div className="app-empty">
         <header className="app-header">
           <h1>pdf-viewer</h1>
-          <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
+          <ThemeSelect theme={theme} setTheme={setTheme} />
         </header>
         {loading && <LoadingDocling progress={progressPercent} message={progressMessage} />}
         <Library
@@ -275,9 +303,7 @@ function App() {
         <div className="app-sidebar-header">
           <h2>{TAB_TITLES[tab]}</h2>
           <div className="app-actions">
-            <button type="button" className="app-theme-toggle" onClick={toggleTheme} aria-label="Basculer le thème">
-              {theme === "dark" ? "☀" : "☾"}
-            </button>
+            <ThemeSelect theme={theme} setTheme={setTheme} />
             <a
               className="app-action"
               href={markdownUrl(doc.doc_id)}
