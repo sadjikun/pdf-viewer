@@ -65,6 +65,8 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
+from imgsize import img_pixel_size
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TESSERACT — détection et configuration au démarrage
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1796,7 +1798,8 @@ def convertir_pdf(
                         #   "beams2.2Modeling"  → "beams\n2.2Modeling"
                         #   "20262.1Composite"  → "2026\n2.1Composite"
                         split = _re.sub(
-                            r'([A-Za-zÀ-ÿ\d])(\d+\.\d+\s*[A-ZÀ-ÿ])',
+                            # FIX-025 : \d+(?:\.\d+)+ couvre les numéros 2 niveaux (6.1) ET plus (6.1.1).
+                            r'([A-Za-zÀ-ÿ\d])(\d+(?:\.\d+)+\s*[A-ZÀ-ÿ])',
                             lambda s: s.group(1) + '\n' + s.group(2),
                             text,
                         )
@@ -1861,9 +1864,14 @@ def convertir_pdf(
                             meta, b64data = data_uri.split(",", 1)
                             ext = "jpg" if ("/jpeg" in meta or "/jpg" in meta) else "png"
                             img_name = f"{counter[0]:06d}.{ext}"
-                            (batch_dir / img_name).write_bytes(base64.b64decode(b64data))
+                            raw = base64.b64decode(b64data)
+                            (batch_dir / img_name).write_bytes(raw)
                             counter[0] += 1
-                            return f'src="/doc/{doc_id}/html-image/b{batch_idx}/{img_name}"'
+                            # FIX-035 : émettre data-w/data-h pour que les filtres logos /
+                            # dimensionnement du Reader fonctionnent sur les URLs de-embeddées.
+                            dims = img_pixel_size(raw)
+                            dim_attrs = f' data-w="{dims[0]}" data-h="{dims[1]}"' if dims else ""
+                            return f'src="/doc/{doc_id}/html-image/b{batch_idx}/{img_name}"{dim_attrs}'
                         except Exception:
                             return m.group(0)
 
