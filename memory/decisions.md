@@ -107,3 +107,23 @@ Le cache est reconstituable à tout moment (source PDF toujours présent).
 
 **Conséquences :** Pas de requêtes cross-documents (liste des docs récents → localStorage frontend).
 Nettoyage manuel du cache possible via `DELETE /doc/{id}` ou `rm -rf backend/cache/`.
+
+---
+
+## ADR-007 — Launcher = fenêtre pywebview (window-only) + WebView2 bundlé
+
+**Contexte :** Rendre le lancement plus convivial (ROADMAP D1). Le launcher systray (pystray)
+demandait plusieurs clics et n'offrait pas de fenêtre applicative.
+
+**Décision :** Fenêtre de bureau **pywebview** (backend EdgeChromium/WebView2). Double-clic →
+splash → démarrage auto des serveurs → chargement de l'app ; **fermer la fenêtre = quitter**
+(pas de tray). Le mode Standard/IA est choisi dans l'interface web (`ModeChooser`), plus dans le
+launcher. Runtime WebView2 **bundlé** (bootstrapper Evergreen, auto-install au 1er lancement).
+Logique serveur isolée et testée dans `launcher_core.py` ; coquille GUI dans `launcher.py`.
+
+**Raison :** expérience « app » native ; pywebview et pystray se disputent la boucle GUI principale
+→ window-only ; WebView2 bundlé pour une machine fraîche. *Fait évoluer le launcher pystray (WIP).*
+
+**Conséquences :** dépend du runtime WebView2 (mitigé par le bundle). Toujours pas standalone :
+nécessite `.venv` + `node_modules` (le launcher lance `uvicorn` + `npm run dev`). Le packaging
+« frontend statique servi par FastAPI » de D1 reste à faire.

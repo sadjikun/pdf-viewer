@@ -92,7 +92,7 @@ machines (ou par un collègue), sans toucher à Python ni Node.
 
 | ID | Livrable | Détail | Prio |
 |----|----------|--------|------|
-| D1 | **Installateur one-click** | Finaliser le launcher pywebview → packaging (PyInstaller + build frontend statique servi par FastAPI). | S |
+| D1 | **Installateur one-click** 🔄 | Launcher **fenêtre pywebview** + splash + ModeChooser + icône livre faits (2026-05-29, ADR-007). Reste : build frontend statique servi par FastAPI pour un vrai standalone. | S |
 | D2 | **Stratégie modèles ML** | Décider : bundler les modèles (lourd : Florence-2, pix2tex ~400 Mo, Docling) **vs** télécharger au premier lancement. | S |
 
 **Pourquoi en dernier :** on empaquette quand l'ensemble est stable. Packager une cible
@@ -124,6 +124,6 @@ une GED d'entreprise.
 |-------|--------|
 | Phase 1 — Confiance | 🔄 En cours — R11 ✅ / R12 ✅ (notes durables + export fiche) |
 | Phase 2 — Intelligence | ⬜ À démarrer |
-| Phase 3 — Diffusion | ⬜ À démarrer (launcher pywebview : 🔄 en cours) |
+| Phase 3 — Diffusion | 🔄 En cours — launcher fenêtre pywebview ✅ ; packaging statique restant |
 
 > Mettre à jour ce tableau et `phases.md` à chaque livrable terminé. Légende priorité (M/S/C/W) : voir `PRD.md` §3.

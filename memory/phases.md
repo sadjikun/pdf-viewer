@@ -65,6 +65,18 @@ Choix Docling + FastAPI + React/Vite. Structure `backend/` + `frontend/`. Python
 
 ---
 
+## Phase 7 — Diffusion : launcher fenêtre (D1) 🔄 EN COURS
+> ROADMAP D1. Voir `docs/superpowers/specs/2026-05-29-launcher-pywebview-design.md` + le plan associé + ADR-007.
+
+| # | Tâche | Statut |
+|---|-------|--------|
+| D1a | Launcher fenêtre pywebview (splash → app), fermeture = quit, `launcher_core.py` testé (11 tests) | ✅ Fait (2026-05-29) |
+| D1b | ModeChooser Standard/IA dans l'app (chaque lancement, dernier choix présélectionné) | ✅ Fait (2026-05-29) |
+| D1c | Icône app (`assets/app.ico`) + WebView2 bundlé + `build.bat` PyInstaller | ✅ Fait (2026-05-29) |
+| D1d | Build frontend statique servi par FastAPI (vrai standalone) | ⬜ À faire |
+
+---
+
 ## Prochaines priorités
 
 1. **Intégration continue & Déploiement** : Packaging de l'application pour des déploiements facilités.

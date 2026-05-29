@@ -3,6 +3,14 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-29 — Launcher fenêtre pywebview + chooser de mode (D1)
+**Fichiers modifiés :** `launcher.py`, `launcher_core.py` (nouveau), `make_icon.py` (nouveau), `assets/app.ico` (nouveau), `assets/MicrosoftEdgeWebview2Setup.exe` (nouveau), `build.bat`, `backend/requirements.txt`, `frontend/src/components/ModeChooser/*` (nouveau), `frontend/src/App.tsx`, `tests/launcher/*` (nouveau), wiki `memory/`
+**Résumé :** Remplacement du launcher systray (pystray) par une fenêtre de bureau pywebview : double-clic → splash (icône livre) → démarrage auto backend+frontend → chargement de l'app ; fermer la fenêtre arrête les deux serveurs (window-only). L'app accueille par un `ModeChooser` Standard/IA à chaque lancement (dernier choix présélectionné, `setAppMode`). Icône launcher/exe/fenêtre = favicon livre (`assets/app.ico`). Runtime WebView2 bundlé (auto-install au 1er lancement). Logique serveur extraite et testée dans `launcher_core.py` (11 tests).
+**Fixes introduits :** aucun — ADR-007 (launcher pywebview window-only + WebView2 bundlé).
+**Points ouverts :** vérifs manuelles utilisateur : lancer `launcher.py`/`launcher.exe` → fenêtre+splash+app+chooser, fermeture tue les process (Task Manager) ; `build.bat` pour régénérer `launcher.exe` ; chemins WebView2-absent et prérequis-manquants ; packaging frontend statique (D1) non fait.
+
+---
+
 ### 2026-05-29 — Notes & surlignages durables (R11) + export fiche (R12)
 **Fichiers modifiés :** `backend/main.py`, `backend/fiche.py`, `backend/conftest.py`, `backend/tests/test_annotations.py`, `backend/tests/test_fiche.py`, `backend/requirements.txt`, `frontend/src/types.ts`, `frontend/src/api.ts`, `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/MarkdownReader.css`, wiki `memory/`, `CLAUDE.md`, `GEMINI.md`
 **Résumé :** Migration des annotations de `localStorage` vers un stockage serveur durable `cache/{doc}/annotations.json` (R11), avec restauration des surlignages section-scopée multi-nœuds (clés déterministes `{section}::{shortHash}`), sync Option B (localStorage primaire + sync serveur débouncé 1000 ms, I-B) et auto-migration au premier open. Ajout d'un panneau "Notes" listant les annotations groupées par section et d'un bouton "Fiche" exportant une fiche de révision HTML/Markdown (R12, `backend/fiche.py` + endpoint `/doc/{id}/fiche`). Harnais pytest introduit (`conftest.py` + 10 tests verts). Plan exécuté en subagent-driven-development ; revues ground-truth (diff + tsc) à chaque dispatch.
