@@ -1387,6 +1387,7 @@ tmp = ddir / "annotations.json.tmp"
 tmp.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
 os.replace(tmp, ddir / "annotations.json")                    # I-A atomique
 ```
+**Sécurité :** l'export fiche (`fiche.py` `render_html`) échappe le champ `color` (contrôlé par l'utilisateur — le PUT ne valide que la forme) avant interpolation dans l'attribut `class` → garde anti-XSS stocké. Les couleurs hex `#rrggbb` sont validées (`_resolve_color`) puis rendues telles quelles ; le n° de page est coercé en `int` (`_safe_page`).
 
 ---
 
