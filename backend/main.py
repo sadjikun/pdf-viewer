@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ ROOT = Path(__file__).parent
 CACHE_DIR = ROOT / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 _DOC_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+_EMPTY_ANNOTATIONS = {"version": 1, "highlights": [], "notes": {}, "saved_at": 0}
 
 # TD-013 : version pipeline attendue. Doit rester synchronisée avec PIPELINE_VERSION dans pipeline.py.
 _CURRENT_PIPELINE_VERSION = "2026-05-25"
@@ -535,6 +537,51 @@ def get_benchmark_html(doc_id: str, force: bool = False):
 @app.get("/doc/{doc_id}/outline")
 def get_outline(doc_id: str) -> Any:
     return _load_result(doc_id).get("outline", [])
+
+
+@app.get("/doc/{doc_id}/annotations")
+def get_annotations(doc_id: str):
+    ddir = _doc_dir(doc_id)  # raises 400 on bad id
+    if not ddir.exists():
+        raise HTTPException(status_code=404, detail="document not found")
+    path = ddir / "annotations.json"
+    if not path.exists():
+        return JSONResponse(dict(_EMPTY_ANNOTATIONS))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return JSONResponse(dict(_EMPTY_ANNOTATIONS))  # corrupt → empty
+    return JSONResponse(data)
+
+
+@app.put("/doc/{doc_id}/annotations")
+def put_annotations(doc_id: str, body: dict):
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(status_code=404, detail="document not found")
+
+    highlights = body.get("highlights", [])
+    notes = body.get("notes", {})
+    if not isinstance(highlights, list) or not isinstance(notes, dict):
+        raise HTTPException(status_code=422, detail="invalid annotations shape")
+
+    # Drop orphan notes (no matching highlight key)
+    valid_keys = {h.get("key") for h in highlights if isinstance(h, dict)}
+    notes = {k: v for k, v in notes.items() if k in valid_keys}
+
+    store = {
+        "version": 1,
+        "highlights": highlights,
+        "notes": notes,
+        "saved_at": int(time.time() * 1000),
+    }
+
+    # Atomic write
+    path = ddir / "annotations.json"
+    tmp = ddir / "annotations.json.tmp"
+    tmp.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+    return {"ok": True, "saved_at": store["saved_at"]}
 
 
 @app.get("/doc/{doc_id}/figure/{fig_id}")
