@@ -457,3 +457,86 @@ def _level_depuis_titre(title: str) -> int | None:
     if not m:
         return None
     return m.group(1).count(".") + 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MULTI-FORMAT (MarkItDown) — Word, PowerPoint, Excel, HTML, images, notebooks…
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Formats pris en charge par MarkItDown (hors PDF, traité par Docling).
+MARKITDOWN_EXTENSIONS: set[str] = {
+    ".docx", ".pptx", ".xlsx", ".xls",
+    ".html", ".htm", ".md", ".txt",
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+    ".ipynb", ".csv",
+}
+
+_MD_HEADING = re.compile(r"^(#{1,6})\s+(.+)", re.MULTILINE)
+
+
+def _outline_from_markdown(text: str) -> list[dict[str, Any]]:
+    """Construit un outline depuis les titres Markdown (# → niveau 1, ## → 2…)."""
+    flat: list[dict[str, Any]] = []
+    for i, m in enumerate(_MD_HEADING.finditer(text)):
+        flat.append({
+            "id": f"s_{i}",
+            "level": len(m.group(1)),
+            "title": m.group(2).strip(),
+            "page": None,
+            "bbox": None,
+            "children": [],
+        })
+    return _construire_arbre(flat)
+
+
+def convertir_generic(
+    file_path: Path,
+    out_dir: Path,
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, Any]:
+    """Convertit un fichier non-PDF en Markdown via MarkItDown.
+
+    Extrait le texte et un outline depuis les titres Markdown, écrit result.md.
+    Pas de figures/tables (extraction réservée au pipeline PDF Docling).
+    """
+    from markitdown import MarkItDown  # import différé : dépendance optionnelle
+
+    if progress_callback:
+        progress_callback(10, "Initialisation de MarkItDown...")
+    ext = file_path.suffix.lower()
+    log.info("MarkItDown : %s (%s)", file_path.name, ext)
+
+    if progress_callback:
+        progress_callback(40, "Conversion en cours via MarkItDown...")
+    converter = MarkItDown()
+    try:
+        result = converter.convert(str(file_path))
+        markdown_text = result.text_content or ""
+    except Exception as e:
+        raise RuntimeError(f"MarkItDown a échoué sur {file_path.name} : {e}") from e
+
+    if progress_callback:
+        progress_callback(85, "Sauvegarde du Markdown...")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "result.md").write_text(markdown_text, encoding="utf-8")
+    (out_dir / "figures").mkdir(exist_ok=True)
+
+    if progress_callback:
+        progress_callback(90, "Extraction du sommaire...")
+    outline = _outline_from_markdown(markdown_text)
+    est_pages = max(1, round(len(markdown_text.split()) / 500))  # ~500 mots/page
+
+    if progress_callback:
+        progress_callback(100, "Traitement terminé.")
+
+    return {
+        "pages": [],
+        "outline": outline,
+        "figures": [],
+        "tables": [],
+        "n_pages": est_pages,
+        "n_figures": 0,
+        "n_tables": 0,
+        "extraction_mode": "markitdown",
+        "file_type": ext.lstrip("."),
+    }
