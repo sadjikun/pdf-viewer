@@ -289,6 +289,9 @@ function App() {
   const figures = doc.figures;
   const total = figures.length;
   const current = figureIdx != null ? figures[figureIdx] : null;
+  // Document non-PDF (MarkItDown) : pas de PDF à afficher → vue Lecteur forcée.
+  const isMarkitdown = doc.extraction_mode === "markitdown" || (doc.pages?.length ?? 0) === 0;
+  const effectiveViewMode = isMarkitdown ? "reader" : viewMode;
 
   return (
     <div className={`app${sidebarOpen ? " sidebar-open" : ""}`}>
@@ -310,6 +313,7 @@ function App() {
         <div className="app-sidebar-header">
           <h2>{TAB_TITLES[tab]}</h2>
           <div className="app-actions">
+            {!isMarkitdown && (
             <div className="app-view-toggle" role="group" aria-label="Mode d'affichage">
               <button
                 type="button"
@@ -328,6 +332,7 @@ function App() {
                 Lecteur
               </button>
             </div>
+            )}
             <ThemeSelect theme={theme} setTheme={setTheme} />
             <a
               className="app-action"
@@ -406,7 +411,7 @@ function App() {
       </aside>
       <main className="app-main">
         <Suspense fallback={<p className="viewer-msg">Chargement…</p>}>
-          {viewMode === "reader" ? (
+          {effectiveViewMode === "reader" ? (
             <MarkdownReader
               docId={doc.doc_id}
               outline={doc.outline}

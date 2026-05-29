@@ -34,7 +34,7 @@ export function UploadZone({ onFile, disabled }: Props) {
       onDragLeave={() => setHover(false)}
       onDrop={handleDrop}
     >
-      <p className="upload-title">Déposez un PDF ici</p>
+      <p className="upload-title">Déposez un document ici</p>
       <p className="upload-or">ou</p>
       <button
         type="button"
@@ -47,12 +47,14 @@ export function UploadZone({ onFile, disabled }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf"
+        accept=".pdf,.docx,.pptx,.xlsx,.xls,.html,.htm,.md,.txt,.csv,.ipynb,.png,.jpg,.jpeg,.gif,.bmp,.webp"
         hidden
         onChange={handleSelect}
       />
       <p className="upload-hint">
-        Taille max : 100 Mo · Le 1<sup>er</sup> traitement prend quelques dizaines de secondes (Docling).
+        PDF, Word, PowerPoint, Excel, HTML, images, notebooks… · Taille max : 100 Mo
+        <br />
+        Le 1<sup>er</sup> traitement prend quelques dizaines de secondes.
       </p>
     </div>
   );

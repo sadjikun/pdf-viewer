@@ -125,15 +125,19 @@ def update_task_progress(doc_id: str, progress: int, message: str) -> None:
             active_tasks[doc_id].update({"progress": progress, "message": message})
 
 
-def run_pipeline_bg(doc_id: str, pdf_path: Path, ddir: Path, filename: str) -> None:
-    """Exécute le pipeline Docling en arrière-plan et écrit result.json ou error.json."""
-    from pipeline import convertir_pdf  # import différé : Docling est lent à charger
+def run_pipeline_bg(doc_id: str, src_path: Path, ddir: Path, filename: str, is_pdf: bool) -> None:
+    """Exécute le pipeline en arrière-plan et écrit result.json ou error.json.
 
+    PDF → Docling (convertir_pdf) ; autres formats → MarkItDown (convertir_generic).
+    """
+    from pipeline import convertir_pdf, convertir_generic  # import différé
+
+    cb = lambda p, m: update_task_progress(doc_id, p, m)
     try:
-        result = convertir_pdf(
-            pdf_path, ddir,
-            progress_callback=lambda p, m: update_task_progress(doc_id, p, m),
-        )
+        if is_pdf:
+            result = convertir_pdf(src_path, ddir, progress_callback=cb)
+        else:
+            result = convertir_generic(src_path, ddir, progress_callback=cb)
         result["doc_id"] = doc_id
         result["filename"] = filename
         _write_json_atomic(ddir / "result.json", result)
@@ -203,15 +207,25 @@ def get_library() -> JSONResponse:
 
 @app.post("/process")
 async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...)) -> JSONResponse:
-    """Upload un PDF et lance Docling en arrière-plan.
+    """Upload un document et lance l'extraction en arrière-plan.
 
-    Retourne immédiatement :
+    PDF → Docling ; autres formats (Word, PowerPoint, Excel, HTML, images,
+    notebooks…) → MarkItDown. Retourne immédiatement :
       - le result.json complet si le document est déjà en cache (hit)
       - sinon {doc_id, status: "processing", progress, message} ; le client
         interroge ensuite GET /doc/{doc_id}/status jusqu'à status "ready"/"failed".
     """
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(400, "Fichier PDF requis (extension .pdf)")
+    from pipeline import MARKITDOWN_EXTENSIONS  # import différé
+
+    if not file.filename:
+        raise HTTPException(400, "Nom de fichier manquant")
+    ext = Path(file.filename).suffix.lower()
+    is_pdf = ext == ".pdf"
+    supported = {".pdf"} | MARKITDOWN_EXTENSIONS
+    if ext not in supported:
+        raise HTTPException(
+            400, f"Format '{ext}' non supporté. Formats acceptés : " + ", ".join(sorted(supported))
+        )
 
     data = await file.read()
     if not data:
@@ -219,7 +233,7 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if len(data) > MAX_UPLOAD_BYTES:
         max_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
         raise HTTPException(413, f"Fichier trop volumineux (max {max_mb} Mo)")
-    if not data.startswith(b"%PDF"):
+    if is_pdf and not data.startswith(b"%PDF"):
         raise HTTPException(400, "Le fichier ne ressemble pas à un PDF (entête %PDF absent)")
 
     doc_id = _hash_bytes(data)
@@ -239,8 +253,8 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
     # 3. Nouveau traitement : on persiste la source et on lance le pipeline en tâche de fond.
     ddir.mkdir(parents=True, exist_ok=True)
     (ddir / "error.json").unlink(missing_ok=True)  # purge une éventuelle erreur précédente
-    pdf_path = ddir / "source.pdf"
-    pdf_path.write_bytes(data)
+    src_path = ddir / ("source.pdf" if is_pdf else f"source{ext}")
+    src_path.write_bytes(data)
 
     with tasks_lock:
         active_tasks[doc_id] = {
@@ -249,7 +263,7 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
             "message": "Fichier reçu, démarrage de l'analyse...",
         }
 
-    background_tasks.add_task(run_pipeline_bg, doc_id, pdf_path, ddir, file.filename)
+    background_tasks.add_task(run_pipeline_bg, doc_id, src_path, ddir, file.filename, is_pdf)
 
     return JSONResponse({
         "doc_id": doc_id,

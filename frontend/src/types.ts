@@ -39,6 +39,9 @@ export interface DocResult {
   outline: OutlineNode[];
   figures: Figure[];
   tables: TableItem[];
+  filename?: string;
+  file_type?: string;
+  extraction_mode?: ExtractionMode | "unknown";
 }
 
 // Réponse de POST /process quand le traitement démarre en arrière-plan.
