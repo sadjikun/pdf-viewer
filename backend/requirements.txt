@@ -108,3 +108,9 @@ xlsxwriter==3.2.9
 # Multi-format : conversion Word/PowerPoint/Excel/HTML/images/notebooks → Markdown
 # L'extra [all] embarque les lecteurs de format (docx, pptx, xlsx, …).
 markitdown[all]>=0.1.1
+
+# OCR (optionnel) — endpoints /searchable-pdf, /ocr-image, /latex-ocr, /tesseract/status
+# Requiert Tesseract installé séparément (scoop install tesseract / brew install tesseract / apt install tesseract-ocr)
+ocrmypdf>=17.0
+pytesseract>=0.3.10
+pix2tex==0.1.4

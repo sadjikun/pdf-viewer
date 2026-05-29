@@ -367,3 +367,160 @@ def delete_doc(doc_id: str) -> dict[str, str]:
     if p.exists():
         shutil.rmtree(p)
     return {"status": "deleted", "doc_id": doc_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OCR — Tesseract (searchable PDF, image OCR) + pix2tex (LaTeX). Tout optionnel.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/tesseract/status")
+def tesseract_status() -> JSONResponse:
+    """État de Tesseract : chemin, langues disponibles, version."""
+    import ocr
+
+    if not ocr.TESSERACT_CMD:
+        return JSONResponse({"available": False, "cmd": None, "langs": [], "version": None})
+
+    langs: list[str] = []
+    version: str | None = None
+    try:
+        import pytesseract  # type: ignore
+        langs = pytesseract.get_languages(config="")
+        version = str(pytesseract.get_tesseract_version())
+    except Exception:
+        pass
+
+    return JSONResponse({
+        "available": True,
+        "cmd": ocr.TESSERACT_CMD,
+        "tessdata": ocr.TESSDATA_DIR,
+        "langs": langs,
+        "version": version,
+    })
+
+
+@app.get("/doc/{doc_id}/searchable-pdf")
+def get_searchable_pdf(doc_id: str) -> FileResponse:
+    """Génère un PDF avec couche texte OCR embarquée via OCRmyPDF + Tesseract.
+
+    - PDF natif  : skip_text=True (texte déjà présent, Tesseract complète les vides)
+    - PDF scanné : OCR complet fra+eng
+    Retourne 503 si Tesseract ou OCRmyPDF est absent. Résultat mis en cache.
+    """
+    import ocr
+
+    ddir = _doc_dir(doc_id)
+    source = ddir / "source.pdf"
+    if not source.exists():
+        raise HTTPException(404, "Document inconnu")
+
+    if not ocr.TESSERACT_CMD:
+        raise HTTPException(
+            503,
+            "Tesseract non trouvé. Installez-le (scoop install tesseract / "
+            "brew install tesseract / apt install tesseract-ocr).",
+        )
+
+    try:
+        import ocrmypdf  # type: ignore
+    except ImportError:
+        raise HTTPException(503, "OCRmyPDF non installé : pip install ocrmypdf")
+
+    searchable = ddir / "searchable.pdf"
+    if searchable.exists():
+        return FileResponse(
+            searchable, media_type="application/pdf",
+            filename=f"{doc_id}_searchable.pdf",
+        )
+
+    from pipeline import _is_native_pdf  # import différé
+
+    try:
+        skip_text = _is_native_pdf(source)
+        ocrmypdf.ocr(
+            source, searchable,
+            language=["fra", "eng"],
+            skip_text=skip_text,
+            progress_bar=False,
+            jobs=2,
+        )
+    except Exception as e:
+        raise HTTPException(422, f"OCR échoué : {type(e).__name__}: {e}")
+
+    return FileResponse(
+        searchable, media_type="application/pdf",
+        filename=f"{doc_id}_searchable.pdf",
+    )
+
+
+@app.post("/doc/{doc_id}/ocr-image/{fig_id}")
+def ocr_figure_image(doc_id: str, fig_id: str) -> JSONResponse:
+    """OCR direct sur une figure (texte dense : tableaux image, notes) via pytesseract."""
+    import ocr
+
+    _validate_fig_id(fig_id)
+
+    if not ocr.TESSERACT_CMD:
+        raise HTTPException(503, "Tesseract non trouvé")
+
+    try:
+        import pytesseract  # type: ignore
+        from PIL import Image
+    except ImportError:
+        raise HTTPException(503, "pytesseract / Pillow non installé")
+
+    img_path = _doc_dir(doc_id) / "figures" / f"{fig_id}.png"
+    if not img_path.exists():
+        raise HTTPException(404, "Figure inconnue")
+
+    try:
+        img = Image.open(img_path)
+        text = pytesseract.image_to_string(img, lang="fra+eng").strip()
+    except Exception as e:
+        raise HTTPException(422, f"OCR image échoué : {e}")
+
+    return JSONResponse({"fig_id": fig_id, "text": text, "engine": "tesseract"})
+
+
+@app.post("/doc/{doc_id}/latex-ocr")
+def run_latex_ocr(doc_id: str) -> JSONResponse:
+    """Lance pix2tex sur les figures du document et met à jour result.json.
+
+    Requiert pix2tex (pip install pix2tex). Retourne 503 si absent.
+    """
+    import ocr
+
+    ddir = _doc_dir(doc_id)
+    result_path = ddir / "result.json"
+    if not result_path.exists():
+        raise HTTPException(404, "Document inconnu")
+
+    if ocr.init_latex_ocr() is None:
+        raise HTTPException(503, "pix2tex non installé. Exécutez : pip install pix2tex")
+
+    with open(result_path, encoding="utf-8") as f:
+        result = json.load(f)
+
+    figures = result.get("figures", [])
+    figures_dir = ddir / "figures"
+
+    updated = 0
+    for fig in figures:
+        fig_id = fig.get("id", "")
+        if not FIG_ID_RE.fullmatch(fig_id):
+            continue
+        img_path = figures_dir / f"{fig_id}.png"
+        if not img_path.exists():
+            continue
+        latex = ocr.latex_ocr_figure(img_path)
+        if latex:
+            fig["latex"] = latex
+            updated += 1
+
+    # Écriture atomique pour éviter un result.json corrompu en cas de lecture concurrente
+    tmp_path = result_path.with_suffix(".json.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, result_path)
+
+    return JSONResponse({"status": "ok", "figures_updated": updated})
