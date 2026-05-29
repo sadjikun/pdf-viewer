@@ -991,6 +991,7 @@ function wrapRange(
   range.setEnd(node, end);
   const span = document.createElement("span");
   span.className = `reader-hl${hasNote ? " reader-hl--has-note" : ""}`;
+  span.style.backgroundColor = color;
   span.setAttribute("data-key", key);
   span.setAttribute("data-color", color);
   range.surroundContents(span);
@@ -1503,6 +1504,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     if (!docEl) return;
 
     const range = selection.getRangeAt(0);
+    if (!docEl.contains(range.commonAncestorContainer)) return;
     const { section, sectionTitle } = findSectionInfo(range.startContainer);
     const page = findPageNo(docEl, range.startContainer);
 
