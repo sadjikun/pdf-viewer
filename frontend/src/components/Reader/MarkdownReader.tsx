@@ -1,12 +1,12 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import katex from "katex";
-import { htmlUrl, htmlManifestUrl, htmlPartUrl, markdownUrl, API_BASE } from "../../api";
-import type { HtmlManifestEntry, OutlineNode, Figure } from "../../types";
+import { htmlUrl, htmlManifestUrl, htmlPartUrl, markdownUrl, API_BASE, getAnnotations, saveAnnotations, ficheUrl } from "../../api";
+import type { HtmlManifestEntry, OutlineNode, Figure, AnnotationStore, StoredHighlight } from "../../types";
 import { FigureOverlay } from "../Figure/FigureOverlay";
 import "./MarkdownReader.css";
 import "katex/dist/katex.min.css";
@@ -952,54 +952,126 @@ export interface Highlight {
   text: string;
   color: string;
   key: string;
+  section?: string;
+  sectionTitle?: string;
+  page?: number;
+  prefix?: string;
+  suffix?: string;
 }
 
-function highlightTextInElement(container: HTMLElement, textToHighlight: string, color: string, key: string, hasNote: boolean) {
-  if (!textToHighlight || textToHighlight.length < 3) return;
-
-  const walk = document.createTreeWalker(
-    container,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode: (node) => {
-        const parent = node.parentElement;
-        if (!parent) return NodeFilter.FILTER_REJECT;
-        if (parent.closest(".reader-hl, script, style, .formula, .equation")) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
+// Collect text nodes under `scope`, skipping already-highlighted spans,
+// scripts, styles, and math (same exclusions as the original FIX).
+function collectTextNodes(scope: Element): Text[] {
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const p = node.parentElement;
+      if (!p) return NodeFilter.FILTER_REJECT;
+      if (p.closest(".reader-hl, script, style, .formula, .equation")) {
+        return NodeFilter.FILTER_REJECT;
       }
-    }
-  );
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes: Text[] = [];
+  let n = walker.nextNode();
+  while (n) {
+    nodes.push(n as Text);
+    n = walker.nextNode();
+  }
+  return nodes;
+}
 
-  const textNodes: Text[] = [];
-  let currentNode = walk.nextNode() as Text | null;
-  while (currentNode) {
-    textNodes.push(currentNode);
-    currentNode = walk.nextNode() as Text | null;
+// Wrap a [start,end) char range inside a single text node with a hl span.
+function wrapRange(
+  node: Text, start: number, end: number,
+  color: string, key: string, hasNote: boolean,
+): void {
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  const span = document.createElement("span");
+  span.className = `reader-hl${hasNote ? " reader-hl--has-note" : ""}`;
+  span.setAttribute("data-key", key);
+  span.setAttribute("data-color", color);
+  range.surroundContents(span);
+}
+
+// Restore one highlight: find its text within its section (or whole doc as
+// fallback) using a concatenated-string offset map, then wrap every text-node
+// segment the match spans.
+function restoreHighlight(
+  docEl: Element,
+  hl: { text: string; color: string; key: string; section?: string;
+        prefix?: string; suffix?: string },
+  hasNote: boolean,
+): boolean {
+  if (!hl.text) return false;
+
+  let scope: Element = docEl;
+  if (hl.section) {
+    const found = docEl.querySelector(`section[data-sid="${CSS.escape(hl.section)}"]`);
+    if (found) scope = found;
   }
 
-  for (const node of textNodes) {
-    const val = node.nodeValue ?? "";
-    const index = val.indexOf(textToHighlight);
-    if (index !== -1) {
-      const range = document.createRange();
-      range.setStart(node, index);
-      range.setEnd(node, index + textToHighlight.length);
+  const nodes = collectTextNodes(scope);
+  if (nodes.length === 0) return false;
 
-      const span = document.createElement("span");
-      span.className = `reader-hl${hasNote ? " reader-hl--has-note" : ""}`;
-      span.style.backgroundColor = color;
-      span.setAttribute("data-key", key);
-      span.setAttribute("data-color", color);
+  // Build concatenated string + a map of which node each char came from.
+  let full = "";
+  const map: { node: Text; start: number }[] = [];
+  for (const node of nodes) {
+    map.push({ node, start: full.length });
+    full += node.data;
+  }
 
-      try {
-        range.surroundContents(span);
-      } catch (err) {
-        console.warn("Restore highlight surround error:", err);
-      }
+  // Prefer prefix+text+suffix (disambiguates repeated phrases), then text.
+  let matchStart = -1;
+  const matchLen = hl.text.length;
+  if (hl.prefix || hl.suffix) {
+    const probe = (hl.prefix ?? "") + hl.text + (hl.suffix ?? "");
+    const at = full.indexOf(probe);
+    if (at >= 0) {
+      matchStart = at + (hl.prefix ?? "").length;
     }
   }
+  if (matchStart < 0) matchStart = full.indexOf(hl.text);
+  if (matchStart < 0) return false;
+  const matchEnd = matchStart + matchLen;
+
+  // Find node index for a given absolute offset.
+  const nodeIndexAt = (offset: number): number => {
+    let lo = 0, hi = map.length - 1, ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (map[mid].start <= offset) { ans = mid; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    return ans;
+  };
+
+  // Wrap each segment, back-to-front so earlier offsets stay valid.
+  const segments: { node: Text; start: number; end: number }[] = [];
+  const firstIdx = nodeIndexAt(matchStart);
+  const lastIdx = nodeIndexAt(matchEnd - 1);
+  for (let i = firstIdx; i <= lastIdx; i++) {
+    const nodeStartAbs = map[i].start;
+    const nodeLen = map[i].node.data.length;
+    const segStart = Math.max(0, matchStart - nodeStartAbs);
+    const segEnd = Math.min(nodeLen, matchEnd - nodeStartAbs);
+    if (segEnd > segStart) {
+      segments.push({ node: map[i].node, start: segStart, end: segEnd });
+    }
+  }
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i];
+    try {
+      wrapRange(s.node, s.start, s.end, hl.color, hl.key, hasNote);
+    } catch {
+      // surroundContents throws if the range partially selects a non-text
+      // node; skip that segment rather than abort the whole restore.
+    }
+  }
+  return true;
 }
 
 function removeAllHighlights(container: HTMLElement) {
@@ -1016,6 +1088,47 @@ function removeAllHighlights(container: HTMLElement) {
   container.normalize();
 }
 
+
+// djb2 → base36, deterministic short hash for stable keys.
+function shortHash(str: string): string {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+// Normalize selected text for hashing (collapse whitespace, lowercase).
+function normForKey(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Nearest enclosing section[data-sid] + its heading text.
+function findSectionInfo(node: Node | null): { section: string; sectionTitle: string } {
+  let el = node instanceof Element ? node : node?.parentElement ?? null;
+  const sec = el?.closest("section[data-sid]") as HTMLElement | null;
+  if (!sec) return { section: "", sectionTitle: "" };
+  const heading = sec.querySelector("h1,h2,h3,h4");
+  return {
+    section: sec.getAttribute("data-sid") ?? "",
+    sectionTitle: heading?.textContent?.trim() ?? "",
+  };
+}
+
+// Page number from the nearest preceding .pdf-page-marker[data-page].
+function findPageNo(docEl: Element, node: Node | null): number {
+  if (!node) return 0;
+  const markers = Array.from(docEl.querySelectorAll(".pdf-page-marker[data-page]"));
+  let page = 0;
+  for (const m of markers) {
+    const pos = m.compareDocumentPosition(node);
+    // marker is BEFORE node → node comes after this marker
+    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
+      page = parseInt(m.getAttribute("data-page") || "0", 10) || page;
+    } else {
+      break;
+    }
+  }
+  return page;
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -1119,6 +1232,32 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   const [pageMode, setPageMode] = useState(false);
   const [noteText, setNoteText] = useState("");
 
+  // ── Annotation persistence ────────────────────────────────────────────────
+  const syncTimerRef = useRef<number | null>(null);
+
+  const persistAll = useCallback(
+    (hls: Highlight[], nts: Record<string, string>) => {
+      // localStorage is the primary store — write immediately.
+      try {
+        localStorage.setItem(`reader-hl-${docId}`, JSON.stringify(hls));
+        localStorage.setItem(`reader-notes-${docId}`, JSON.stringify(nts));
+      } catch {
+        /* quota — ignore, server sync is the durable copy */
+      }
+      // Debounced background server sync (Option B). I-B: a failed sync
+      // never touches localStorage, so the local copy survives.
+      if (syncTimerRef.current !== null) {
+        window.clearTimeout(syncTimerRef.current);
+      }
+      syncTimerRef.current = window.setTimeout(() => {
+        saveAnnotations(docId, { highlights: hls, notes: nts }).catch(() => {
+          /* offline / server down — keep local copy, retry on next change */
+        });
+      }, 1000);
+    },
+    [docId],
+  );
+
   // Temps de lecture estimé (200 mots/min)
   const readingMinutes = useMemo(() => Math.ceil(words / 200), [words]);
 
@@ -1221,7 +1360,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       removeAllHighlights(docEl);
       highlights.forEach((hl) => {
         const hasNote = !!notes[hl.key];
-        highlightTextInElement(docEl, hl.text, hl.color, hl.key, hasNote);
+        restoreHighlight(docEl, hl, hasNote);
       });
     }, 100);
 
@@ -1312,47 +1451,42 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     if (!hlMode || renderMode !== "html") return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
-
     const selectedText = selection.toString().trim();
-    if (selectedText.length < 3) return;
+    if (!selectedText || selectedText.length < 2) return;
 
-    // Check if selection is within the reader document
-    if (selection.rangeCount === 0) return;
-    let range;
-    try {
-      range = selection.getRangeAt(0);
-    } catch {
-      return;
-    }
+    const docEl = contentRef.current?.querySelector(".reader-doc");
+    if (!docEl) return;
 
-    const container = contentRef.current?.querySelector(".reader-doc");
-    if (!container || !container.contains(range.commonAncestorContainer)) return;
+    const range = selection.getRangeAt(0);
+    const { section, sectionTitle } = findSectionInfo(range.startContainer);
+    const page = findPageNo(docEl, range.startContainer);
 
-    const key = selectedText.slice(0, 50).toLowerCase().replace(/\s+/g, " ");
+    // prefix/suffix for disambiguation (best-effort within start node).
+    const startText = (range.startContainer.textContent ?? "");
+    const prefix = startText.slice(Math.max(0, range.startOffset - 30), range.startOffset);
+    const endText = (range.endContainer.textContent ?? "");
+    const suffix = endText.slice(range.endOffset, range.endOffset + 30);
 
-    // Check if already highlighted
-    if (highlights.some(h => h.key === key)) {
+    const key = `${section}::${shortHash(normForKey(selectedText))}`;
+
+    // Dedup by key.
+    if (highlights.some((h) => h.key === key)) {
       selection.removeAllRanges();
       return;
     }
 
     const newHl: Highlight = {
-      text: selectedText,
-      color: hlColor,
-      key: key
+      text: selectedText, color: hlColor, key,
+      section, sectionTitle, page, prefix, suffix,
     };
-
     const nextHls = [...highlights, newHl];
     setHighlights(nextHls);
-    localStorage.setItem(`reader-hl-${docId}`, JSON.stringify(nextHls));
+    persistAll(nextHls, notes);
 
-    // Clear selection
-    selection.removeAllRanges();
-
-    // Automatically open the note panel for the new highlight
     setActiveNoteKey(key);
-    setNoteText("");
     setShowNotePanel(true);
+    setNoteText(notes[key] ?? "");
+    selection.removeAllRanges();
   };
 
   // Event delegation to capture clicks on highlights
@@ -1402,7 +1536,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       nextNotes[activeNoteKey] = noteText.trim();
     }
     setNotes(nextNotes);
-    localStorage.setItem(`reader-notes-${docId}`, JSON.stringify(nextNotes));
+    persistAll(highlights, nextNotes);
     setShowNotePanel(false);
     setActiveNoteKey(null);
     setNoteText("");
@@ -1415,11 +1549,10 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     const nextNotes = { ...notes };
     delete nextNotes[activeNoteKey];
     setNotes(nextNotes);
-    localStorage.setItem(`reader-notes-${docId}`, JSON.stringify(nextNotes));
 
     const nextHls = highlights.filter(h => h.key !== activeNoteKey);
     setHighlights(nextHls);
-    localStorage.setItem(`reader-hl-${docId}`, JSON.stringify(nextHls));
+    persistAll(nextHls, nextNotes);
 
     setShowNotePanel(false);
     setActiveNoteKey(null);
@@ -2067,7 +2200,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     removeAllHighlights(doc.body);
     highlights.forEach((hl) => {
       const hasNote = !!notes[hl.key];
-      highlightTextInElement(doc.body, hl.text, hl.color, hl.key, hasNote);
+      restoreHighlight(doc.body, hl, hasNote);
     });
 
     // Resolve relative image URLs to absolute backend URLs in the exported HTML
@@ -2632,8 +2765,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                         }
                         setHighlights([]);
                         setNotes({});
-                        localStorage.removeItem(`reader-hl-${docId}`);
-                        localStorage.removeItem(`reader-notes-${docId}`);
+                        persistAll([], {});
                         setShowHlPop(false);
                       }
                     }}
