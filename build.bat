@@ -27,21 +27,23 @@ echo  [OK] PyInstaller pret.
 echo.
 echo  [2/3] Compilation de launcher.py...
 
+REM  --add-data/--icon SOURCE paths must be absolute: with --specpath build,
+REM  PyInstaller resolves relative sources against build\ (not the project root).
 pyinstaller ^
   --onefile ^
   --windowed ^
   --name launcher ^
-  --icon assets\app.ico ^
+  --icon "%~dp0assets\app.ico" ^
   --distpath . ^
   --workpath build\_pyinstaller ^
   --specpath build ^
   --collect-all webview ^
   --hidden-import=psutil ^
   --hidden-import=PIL._imaging ^
-  --add-data "assets\app.ico;assets" ^
-  --add-data "assets\MicrosoftEdgeWebview2Setup.exe;assets" ^
-  --add-data "launcher_core.py;." ^
-  launcher.py
+  --add-data "%~dp0assets\app.ico;assets" ^
+  --add-data "%~dp0assets\MicrosoftEdgeWebview2Setup.exe;assets" ^
+  --add-data "%~dp0launcher_core.py;." ^
+  "%~dp0launcher.py"
 
 if errorlevel 1 (
     echo.
