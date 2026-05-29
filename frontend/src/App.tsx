@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
+import { ApiError, captionFigures, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
 import { Library } from "./components/Library/Library";
@@ -245,6 +245,18 @@ function App() {
     setSidebarOpen(false);
   };
 
+  // Légendage IA des figures (Florence-2) puis re-fetch pour afficher caption_ai.
+  const handleCaptionFigures = async () => {
+    if (!doc) return;
+    try {
+      await captionFigures(doc.doc_id);
+      setDoc(await getResult(doc.doc_id));
+    } catch (e) {
+      if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
+      else setError(e instanceof Error ? e.message : "Légendage IA indisponible.");
+    }
+  };
+
   const handlePageChange = (page: number) => {
     const active = findActiveSection(flatOutline, page);
     if (active && active.id !== activeId) setActiveId(active.id);
@@ -441,7 +453,7 @@ function App() {
         {tab === "outline" ? (
           <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
         ) : tab === "gallery" ? (
-          <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} />
+          <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} onCaption={handleCaptionFigures} />
         ) : (
           <Tables tables={doc.tables ?? []} onGotoPage={gotoPage} />
         )}

@@ -65,3 +65,30 @@
   font-size: 0.875rem;
   padding: 0.5rem;
 }
+
+.gallery-caption-btn {
+  width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 6px 10px;
+  background: none;
+  border: 1px solid var(--accent, #5e9bff);
+  color: var(--accent, #5e9bff);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.gallery-caption-btn:hover:not(:disabled) {
+  background: rgba(94, 155, 255, 0.1);
+}
+
+.gallery-caption-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.gallery-caption-ai {
+  color: var(--accent, #5e9bff);
+  opacity: 0.85;
+  font-size: 0.72rem;
+}

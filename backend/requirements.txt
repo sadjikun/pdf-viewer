@@ -114,3 +114,7 @@ markitdown[all]>=0.1.1
 ocrmypdf>=17.0
 pytesseract>=0.3.10
 pix2tex==0.1.4
+
+# Captioning IA des figures (optionnel, opt-in) — Florence-2 via transformers/torch
+einops>=0.8
+timm>=1.0

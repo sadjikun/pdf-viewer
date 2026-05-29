@@ -52,6 +52,13 @@ export async function deleteDoc(docId: string): Promise<void> {
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
 }
 
+// Lance Florence-2 sur les figures du document (légendage IA). Met à jour result.json.
+export async function captionFigures(docId: string): Promise<{ figures_updated: number }> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/caption-figures`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
 export function pdfUrl(docId: string): string {
   return `${API_BASE}/doc/${docId}/pdf`;
 }
