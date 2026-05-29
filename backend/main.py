@@ -361,6 +361,33 @@ def get_markdown(doc_id: str) -> FileResponse:
     return FileResponse(md_path, media_type="text/markdown", filename=f"{doc_id}.md")
 
 
+@app.get("/doc/{doc_id}/html")
+def get_html(doc_id: str) -> FileResponse:
+    """HTML Docling complet (1re tranche). 404 si non généré → le Lecteur passe en Markdown."""
+    p = _doc_dir(doc_id) / "result.html"
+    if not p.exists():
+        raise HTTPException(404, "HTML indisponible")
+    return FileResponse(p, media_type="text/html")
+
+
+@app.get("/doc/{doc_id}/html-manifest")
+def get_html_manifest(doc_id: str) -> FileResponse:
+    """Manifest des tranches HTML : [{start, end, file}]."""
+    p = _doc_dir(doc_id) / "html_manifest.json"
+    if not p.exists():
+        raise HTTPException(404, "Manifest HTML indisponible")
+    return FileResponse(p, media_type="application/json")
+
+
+@app.get("/doc/{doc_id}/html-part/{start_page}")
+def get_html_part(doc_id: str, start_page: int) -> FileResponse:
+    """Tranche HTML débutant à la page start_page (start_page typé int → pas de traversal)."""
+    p = _doc_dir(doc_id) / f"html_part_{start_page:04d}.html"
+    if not p.exists():
+        raise HTTPException(404, "Partie HTML inconnue")
+    return FileResponse(p, media_type="text/html")
+
+
 @app.delete("/doc/{doc_id}")
 def delete_doc(doc_id: str) -> dict[str, str]:
     p = _doc_dir(doc_id)
