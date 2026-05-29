@@ -3,6 +3,14 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-27 — Florence-2 : correctifs compatibilité transformers 5.x
+**Fichiers modifiés :** `backend/pipeline.py`, `~/.cache/huggingface/modules/transformers_modules/microsoft/Florence_hyphen_2_hyphen_base/.../configuration_florence2.py`
+**Résumé :** Florence-2-base est incompatible avec transformers 5.x sur deux points : (1) `configuration_florence2.py` accède à `self.forced_bos_token_id` directement alors que 5.x le supprime de `__getattribute__` → corrigé via `getattr(self, "forced_bos_token_id", None)` dans le fichier cache; (2) `Florence2ForConditionalGeneration` ne définit pas `_supports_sdpa` attendu par le dispatcher SDPA de 5.x → corrigé en passant `attn_implementation="eager"` à `from_pretrained`. Florence-2 OK confirmé.
+**Fixes introduits :** aucun (comportements déjà couverts par FIX-044)
+**Points ouverts :** le patch `configuration_florence2.py` est dans le cache HF local (~/.cache/huggingface/modules/) — si le cache est supprimé, le patch est perdu et doit être réappliqué.
+
+---
+
 ### 2026-05-27 — Texify : moteur LaTeX-OCR unifié (remplace pix2tex en moteur primaire)
 **Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `backend/requirements.txt`, `memory/formulas.md`
 **Résumé :** Intégration de Texify (VikParuchuri) comme moteur LaTeX-OCR primaire. Nouvelle abstraction `_latex_ocr_batch(imgs)` + `_resolve_engine()` qui dispatche vers Texify (batch, ~500 MB) ou pix2tex (fallback). Toutes les call-sites (harvest Docling, _convert_figure_formulas, _latex_ocr_figure, endpoint /latex-ocr) utilisent désormais les fonctions unifiées. Texify bénéficie d'une inférence batch native au lieu de ThreadPoolExecutor. Variable `FORMULA_ENGINE` (auto/texify/pix2tex).
