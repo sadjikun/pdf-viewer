@@ -6,8 +6,8 @@
 > grep le "Code clé" du FIX correspondant dans le code source.
 > Snippet absent → STOP, alerter l'utilisateur avant de toucher quoi que ce soit.
 
-Dernière mise à jour : 2026-05-25  
-FIX actifs : FIX-001 à FIX-068 (FIX-023 revert)
+Dernière mise à jour : 2026-05-29  
+FIX actifs : FIX-001 à FIX-074 (FIX-023 revert)
 
 ---
 
@@ -1369,6 +1369,52 @@ const searchOutline = (nodes: OutlineNode[]): Set<string> | null => {
 **Code clé :**
 ```typescript
 setBreadcrumb(cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document"));
+```
+
+---
+
+### FIX-072 — Annotations durables côté serveur (`annotations.json`)
+**Fichiers :** `backend/main.py` (routes `/doc/{id}/annotations`), `backend/fiche.py`, `backend/conftest.py`, `backend/tests/`
+**Problème :** Surlignages et notes ne vivaient que dans `localStorage` → perdus au vidage du cache navigateur, non sauvegardables, non portables.
+**Fix :** Stockage serveur `cache/{doc}/annotations.json`. `GET /doc/{id}/annotations` (struct vide si fichier absent, 404 si doc inconnu, corrompu → vide). `PUT /doc/{id}/annotations` valide la forme (422 si `highlights` pas une liste ou `notes` pas un dict), supprime les notes orphelines — clé sans highlight (I-C), estampille `saved_at` en ms serveur (I-D), écrit de façon atomique (tmp + `os.replace`, I-A). Body parsé en `dict` simple (pas Pydantic, convention projet).
+**Code clé :**
+```python
+valid_keys = {h.get("key") for h in highlights if isinstance(h, dict)}
+notes = {k: v for k, v in notes.items() if k in valid_keys}   # I-C orphelines
+store = {"version": 1, "highlights": highlights, "notes": notes,
+         "saved_at": int(time.time() * 1000)}                 # I-D
+tmp = ddir / "annotations.json.tmp"
+tmp.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+os.replace(tmp, ddir / "annotations.json")                    # I-A atomique
+```
+
+---
+
+### FIX-073 — Restauration surlignage section-scopée multi-nœuds
+**Fichier :** `frontend/src/components/Reader/MarkdownReader.tsx` → `restoreHighlight` / `collectTextNodes` / `wrapRange`
+**Problème :** L'ancien `highlightTextInElement` faisait un `indexOf` mono-nœud (échec dès qu'un surlignage chevauchait plusieurs nœuds texte) et les clés `slice(0,50)` n'étaient ni stables ni portables.
+**Fix :** Restauration via carte d'offsets sur la chaîne concaténée des nœuds texte de la `section[data-sid]` du highlight (fallback : document entier). `prefix`/`suffix` (30 chars) désambiguïsent les phrases répétées. `wrapRange` enveloppe chaque segment **back-to-front**. Clés déterministes `${section}::${shortHash(normForKey(text))}` (djb2→base36). Le TreeWalker exclut toujours `.reader-hl, script, style, .formula, .equation`.
+**Garde-fou CRITIQUE :** `wrapRange` DOIT poser `span.style.backgroundColor = color` — la classe CSS `.reader-hl` n'a **aucune** couleur de fond, et l'export HTML autonome n'a pas le CSS de l'app. Sans cette ligne → surlignages invisibles in-app ET dans l'export.
+**Code clé :**
+```typescript
+span.className = `reader-hl${hasNote ? " reader-hl--has-note" : ""}`;
+span.style.backgroundColor = color;            // seule source de couleur
+const key = `${section}::${shortHash(normForKey(selectedText))}`;
+```
+
+---
+
+### FIX-074 — Sync Option B (localStorage primaire) + auto-migration
+**Fichier :** `frontend/src/components/Reader/MarkdownReader.tsx` → `persistAll`, effet de chargement
+**Problème :** Rendre les annotations durables sans bloquer l'UI ni risquer une perte de données hors-ligne.
+**Fix :** `persistAll` écrit `localStorage` immédiatement (copie primaire) puis programme un sync serveur **débouncé 1000 ms**. Un sync échoué (offline / serveur down) ne touche **jamais** `localStorage` (I-B). Au montage : on charge le serveur d'abord ; si vide, on migre `localStorage` (recalcul des clés en section vide, remap des notes) puis on pousse au serveur. Le timer est nettoyé à l'unmount.
+**Code clé :**
+```typescript
+syncTimerRef.current = window.setTimeout(() => {
+  saveAnnotations(docId, { highlights: hls, notes: nts }).catch(() => {
+    /* offline — on garde la copie locale (I-B) */
+  });
+}, 1000);
 ```
 
 ---

@@ -1,7 +1,7 @@
 # PHASES — État d'avancement du projet
 
 > Tracker vivant : [`../BACKLOG.md`](../BACKLOG.md)  
-> Dernière MAJ : 2026-05-25
+> Dernière MAJ : 2026-05-29
 
 ---
 
@@ -50,6 +50,18 @@ Choix Docling + FastAPI + React/Vite. Structure `backend/` + `frontend/`. Python
 | F6.6 | Recherche Ctrl+F (Reader HTML) | ✅ Fait |
 | F6.7 | Nettoyage automatique du cache (FIX-053) | ✅ Fait |
 | F6.8 | Extraction de secours (Fallback chain) | ✅ Fait (FIX-054) |
+
+---
+
+## Phase 6 — Plateforme d'étude : Confiance (R11/R12) 🔄 EN COURS
+> Première piste de la Phase 1 « Confiance » du `ROADMAP.md`. Voir
+> `docs/superpowers/specs/2026-05-29-durable-notes-design.md` + `docs/superpowers/plans/2026-05-29-durable-notes.md`.
+
+| # | Tâche | Statut |
+|---|-------|--------|
+| R11 | Notes & surlignages durables : stockage serveur `cache/{doc}/annotations.json`, migration `localStorage`, restauration section-scopée multi-nœuds | ✅ Fait (2026-05-29, FIX-072/073/074) |
+| R12 | Export annotations → fiche de révision HTML/Markdown (`backend/fiche.py`, endpoint `/doc/{id}/fiche`, bouton Reader) | ✅ Fait (2026-05-29) |
+| Q1 | Filet de sécurité tests : harnais pytest (`backend/conftest.py`, `backend/tests/`, 10 tests verts) | ✅ Partiel (zones R11/R12) |
 
 ---
 

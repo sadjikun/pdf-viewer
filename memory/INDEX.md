@@ -1,6 +1,6 @@
 # INDEX — Catalogue mémoire
 
-Mis à jour : 2026-05-23  
+Mis à jour : 2026-05-29  
 Pages actives : 15
 
 Flux **LECTURE** : INDEX.md → LOG.md (top 10) → fixes-registry.md → page spécifique  
@@ -14,7 +14,7 @@ Flux **ÉCRITURE** : mettre à jour page → INDEX.md (si nouvelle) → LOG.md
 |------|--------|
 | [VISION.md](VISION.md) | **LIRE EN PREMIER** — Philosophie, personas, ce que le projet EST et N'EST PAS |
 | [PRD.md](PRD.md) | Cahier des charges complet : features priorisées, contraintes, roadmap, hors-scope |
-| [fixes-registry.md](fixes-registry.md) | FIX-001..024 — invariants critiques à ne jamais régresser |
+| [fixes-registry.md](fixes-registry.md) | FIX-001..074 — invariants critiques à ne jamais régresser |
 | [phases.md](phases.md) | Phases 0-5, statuts, travaux en cours, lien BACKLOG.md |
 | [architecture.md](architecture.md) | Vue système, flux données, constantes, contrats entre couches |
 

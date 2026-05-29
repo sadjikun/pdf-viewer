@@ -35,8 +35,8 @@ le code ne casse pas en silence, la bibliothèque reste navigable quand elle gro
 
 | ID | Livrable | Détail | Prio |
 |----|----------|--------|------|
-| R11 | **Notes & surlignages durables** | Migration `localStorage` → stockage serveur (`cache/{doc}/annotations.json`). Survivent au vidage du cache navigateur, sauvegardables, portables. *Fait évoluer ADR-003.* | M |
-| R12 | **Export des annotations** | Génère une fiche de révision (HTML/Markdown) regroupant surlignages + notes d'un document. | S |
+| R11 ✅ | **Notes & surlignages durables** | Migration `localStorage` → stockage serveur (`cache/{doc}/annotations.json`). Survivent au vidage du cache navigateur, sauvegardables, portables. *Fait évoluer ADR-003.* | M |
+| R12 ✅ | **Export des annotations** | Génère une fiche de révision (HTML/Markdown) regroupant surlignages + notes d'un document. | S |
 | L1 | **Organisation bibliothèque** | Dossiers / matières + tags. Filtrage par matière. Indispensable dès que la bibliothèque dépasse quelques dizaines de docs. | M |
 | L2 | **Métadonnées d'étude** | Par document : matière, statut (à lire / en cours / lu), priorité. | S |
 | Q1 | **Filet de sécurité tests** | Smoke tests (l'app charge, un doc s'affiche, endpoints clés répondent) + tests sur les zones touchées par R11/L1. *Pas* une couverture exhaustive des 71 FIX. | M |
@@ -122,7 +122,7 @@ une GED d'entreprise.
 
 | Phase | Statut |
 |-------|--------|
-| Phase 1 — Confiance | ⬜ À démarrer |
+| Phase 1 — Confiance | 🔄 En cours — R11 ✅ / R12 ✅ (notes durables + export fiche) |
 | Phase 2 — Intelligence | ⬜ À démarrer |
 | Phase 3 — Diffusion | ⬜ À démarrer (launcher pywebview : 🔄 en cours) |
 

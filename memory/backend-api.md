@@ -1,6 +1,6 @@
 # BACKEND API — Endpoints main.py
 
-Dernière mise à jour : 2026-05-21  
+Dernière mise à jour : 2026-05-29  
 Base URL : `http://localhost:8000`  
 CORS autorisé : `localhost:5173`, `localhost:5174`
 
@@ -141,6 +141,30 @@ CORS autorisé : `localhost:5173`, `localhost:5174`
 ```json
 { "available": true, "cmd": "/path/tesseract", "tessdata": "/path/tessdata", "langs": ["eng","fra"], "version": "5.3.0" }
 ```
+
+---
+
+### `GET /doc/{doc_id}/annotations`
+**Rôle :** Lit les annotations durables (surlignages + notes) — R11/FIX-072  
+**Réponse :** `{"version":1,"highlights":[...],"notes":{clé:texte},"saved_at":<ms>}` — struct vide si jamais sauvegardé  
+**Erreurs :** 404 si document inconnu ; fichier corrompu → struct vide (jamais 500)
+
+---
+
+### `PUT /doc/{doc_id}/annotations`
+**Rôle :** Sauvegarde les annotations (remplace tout le store) — R11/FIX-072  
+**Body :** `{"highlights": [...], "notes": {clé: texte}}` (dict simple, pas Pydantic)  
+**Réponse :** le store écrit, avec `saved_at` estampillé serveur en ms (I-D)  
+**Invariants :** écriture atomique tmp + `os.replace` (I-A) ; notes orphelines supprimées au save (I-C) ; 422 si `highlights` n'est pas une liste ou `notes` pas un dict
+
+---
+
+### `GET /doc/{doc_id}/fiche`
+**Rôle :** Fiche de révision regroupant surlignages + notes par section — R12  
+**Params :** `?format=html` (défaut) ou `?format=md`  
+**Réponse :** `text/html` ou `text/markdown` avec `Content-Disposition: attachment; filename="<titre>.{html,md}"`  
+**Erreur :** 404 si document inconnu  
+**Module :** rendu pur (sans FastAPI) dans `backend/fiche.py` → `render_html` / `render_markdown`
 
 ---
 

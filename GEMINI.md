@@ -120,6 +120,12 @@ Sidebar : onglets Sommaire / Galerie / Tables.
 | FIX-066 | Extraction des figures de cellules secondaires sur toutes les pages de layout (MarkdownReader.tsx) |
 | FIX-067 | Lightbox Premium interactive intégrée au Reader (MarkdownReader.tsx + FigureOverlay.tsx) |
 | FIX-068 | Suppression et nettoyage des warnings de formatage KaTeX (ignore strict warn) (MarkdownReader.tsx) |
+| FIX-069 | Restreindre l'extraction des images secondaires de layout table à la page 1 (MarkdownReader.tsx) |
+| FIX-070 | Focus mode récursif basé sur l'outline/sommaire PDF (MarkdownReader.tsx) |
+| FIX-071 | Synchronisation et affichage du nom du PDF dans le Reader (App.tsx + MarkdownReader.tsx) |
+| FIX-072 | Annotations durables côté serveur : `cache/{doc}/annotations.json`, endpoints GET/PUT `/doc/{id}/annotations`, écriture atomique, notes orphelines supprimées (main.py + fiche.py) |
+| FIX-073 | Restauration surlignage section-scopée multi-nœuds : clés `{section}::{shortHash}`, `wrapRange` pose `backgroundColor` (MarkdownReader.tsx) |
+| FIX-074 | Sync Option B (localStorage primaire + sync serveur débouncé 1000ms, I-B) + auto-migration localStorage→serveur (MarkdownReader.tsx) |
 
 ---
 

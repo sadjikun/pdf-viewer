@@ -163,8 +163,8 @@ doit pouvoir uploader un PDF et le lire en < 30 secondes.
 
 | ID | Feature | Priorité | Statut |
 |----|---------|----------|--------|
-| R11 | Notes & surlignages durables — stockage serveur (`cache/{doc}/annotations.json`), *supersede ADR-003* | M | ⬜ Planifié |
-| R12 | Export des annotations en fiche de révision (HTML/Markdown) | S | ⬜ Planifié |
+| R11 | Notes & surlignages durables — stockage serveur (`cache/{doc}/annotations.json`), *supersede ADR-003* | M | ✅ Fait (2026-05-29) |
+| R12 | Export des annotations en fiche de révision (HTML/Markdown) | S | ✅ Fait (2026-05-29) |
 | L1 | Organisation bibliothèque : dossiers / matières / tags + filtrage | M | ⬜ Planifié |
 | L2 | Métadonnées d'étude (matière, statut à lire/en cours/lu, priorité) | S | ⬜ Planifié |
 | Q1 | Filet de sécurité tests (smoke + zones touchées par R11/L1) | M | ⬜ Planifié |
