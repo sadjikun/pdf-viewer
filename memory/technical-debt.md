@@ -1,6 +1,6 @@
 # TECHNICAL DEBT — Dettes techniques
 
-Dernière mise à jour : 2026-05-25
+Dernière mise à jour : 2026-05-29
 
 Format : `TD-NNN | Priorité | Statut | Description`  
 Priorité : 🔴 Haute / 🟡 Moyenne / 🟢 Basse
@@ -19,6 +19,10 @@ Priorité : 🔴 Haute / 🟡 Moyenne / 🟢 Basse
 | TD-011 | ✅ 2026-05-23 | Frontend | **Tables structurées** — Résolu par FIX-028 : strip image-tables, wrap `.table-wrap`, promotion `<thead>` automatique. |
 | TD-012 | ✅ 2026-05-24 | Backend | **pix2tex installé** (v0.1.4). `PIX2TEX_FALLBACK=1` par défaut dans pipeline.py. `_convert_figure_formulas()` branché avant `_deembed_images`. Le modèle LatexOCR se télécharge automatiquement (~400 MB) au premier traitement d'une formule. |
 | TD-013 | ✅ 2026-05-25 | Backend | **Version pipeline** — `PIPELINE_VERSION = "2026-05-25"` dans pipeline.py, inclus dans result.json. `_load_result()` de main.py injecte `needs_reprocess` pour détection cache obsolète. |
+| TD-014 | 🟡 | Frontend Reader | **1ʳᵉ page (couverture) mal reprise** — dans le Reader la couverture s'affiche en désordre (rasters pleine-page/logos, en-têtes, marqueurs `Page 1/2/3` entremêlés) alors que le PDF est propre. Zone `sectionizeHtml` + strip rasters `docling-page` (recouper FIX-022/069). NB : doc observé en fast-path « natif » → HTML Reader potentiellement plus brut que Docling complet. Suivre PROTOCOLE DÉBOGAGE (LOG + fixes-registry d'abord). |
+| TD-015 | 🟡 | Frontend Reader / pipeline | **Page sommaire (TOC) mal reprise** — le sommaire s'affiche en table jumelée + gros paragraphe concaténé (`6.1.1Link to…6.1.2Snow…`) dans le Reader. Zone nettoyage TOC / skip pages sommaire (recouper FIX-014/025/046/051). |
+| TD-016 | 🟢 | Frontend Reader UX | **Isoler « Thème de lecture »** — le sélecteur de thème (CSTB/Minimalist/Tufte/Report/Interactive) est logé dans le popover « Police » (typographie). Le sortir dans son propre contrôle de la barre d'outils. `MarkdownReader.tsx`. |
+| TD-017 | 🟡 | Frontend Reader CSS | **Largeur de lecture adaptative (type Word)** — CSTB occupe 100 % de la largeur (trop large), les autres trop étroits. Vouloir une largeur de lecture confortable qui s'adapte à l'écran (marges « bureau »), pas un simple zoom. Revoir `--max-w` par thème (FIX-027/033) — brainstorm avant code. |
 
 ---
 
