@@ -37,7 +37,7 @@ if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
 import threading
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 ROOT = Path(__file__).parent
 CACHE_DIR = ROOT / "cache"
@@ -582,6 +582,48 @@ def put_annotations(doc_id: str, body: dict):
     tmp.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, path)
     return {"ok": True, "saved_at": store["saved_at"]}
+
+
+@app.get("/doc/{doc_id}/fiche")
+def get_fiche(doc_id: str, format: str = "html"):
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(status_code=404, detail="document not found")
+    if format not in ("html", "md"):
+        raise HTTPException(status_code=400, detail="format must be html or md")
+
+    try:
+        result = _load_result(doc_id)
+        title = _clean_title(result.get("title") or result.get("filename") or doc_id)
+    except HTTPException:
+        title = doc_id
+
+    path = ddir / "annotations.json"
+    if path.exists():
+        try:
+            store = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            store = dict(_EMPTY_ANNOTATIONS)
+    else:
+        store = dict(_EMPTY_ANNOTATIONS)
+
+    from fiche import render_html, render_markdown
+
+    safe = re.sub(r"[^\w\-]+", "_", title).strip("_") or "fiche"
+    if format == "md":
+        content = render_markdown(title, store)
+        media = "text/markdown; charset=utf-8"
+        fname = f"{safe}.md"
+    else:
+        content = render_html(title, store)
+        media = "text/html; charset=utf-8"
+        fname = f"{safe}.html"
+
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @app.get("/doc/{doc_id}/figure/{fig_id}")
