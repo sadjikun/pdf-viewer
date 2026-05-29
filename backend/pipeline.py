@@ -21,6 +21,7 @@ Configurable via variables d'environnement PDF_BATCH_SIZE et PDF_BATCH_THRESHOLD
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -291,6 +292,54 @@ def _construire_arbre(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return racine
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# EXPORT HTML (vue Lecteur pleine fidélité Docling)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_HTML_BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.DOTALL | re.IGNORECASE)
+
+
+def _docling_html_body(doc) -> str:
+    """Exporte le DoclingDocument en HTML (images base64 inline), retourne l'inner <body>.
+
+    image_mode=EMBEDDED → HTML auto-suffisant (pas de fichiers image séparés).
+    Retourne "" en cas d'échec (le Lecteur retombe alors sur le Markdown).
+    """
+    try:
+        from docling_core.types.doc.base import ImageRefMode
+        full = doc.export_to_html(image_mode=ImageRefMode.EMBEDDED)
+    except Exception:
+        log.exception("export_to_html a échoué")
+        return ""
+    m = _HTML_BODY_RE.search(full)
+    return m.group(1).strip() if m else full
+
+
+def _write_html_artifacts(out_dir: Path, parts: list[tuple[int, int, str]]) -> None:
+    """Écrit html_part_<start>.html (+ marqueur de page), html_manifest.json et result.html.
+
+    parts : (page_début, page_fin, html_body) par tranche. Consommé par le Reader
+    via /html-manifest puis /html-part/<start>.
+    """
+    manifest: list[dict[str, Any]] = []
+    for start, end, body in parts:
+        if not body:
+            continue
+        marker = f'<div class="pdf-page-sep" data-page="{start}"></div>'
+        fname = f"html_part_{start:04d}.html"
+        (out_dir / fname).write_text(marker + body, encoding="utf-8")
+        manifest.append({"start": start, "end": end, "file": fname})
+    if not manifest:
+        return
+    (out_dir / "html_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+    )
+    # result.html = première tranche (compat liens directs)
+    (out_dir / "result.html").write_text(
+        (out_dir / manifest[0]["file"]).read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+
 def convertir_pdf(
     pdf_path: Path,
     out_dir: Path,
@@ -341,12 +390,19 @@ def _convertir_simple(
     outline = _construire_arbre(sections)
 
     if progress_callback:
-        progress_callback(95, "Export Markdown...")
+        progress_callback(95, "Export Markdown & HTML...")
     try:
         md = doc.export_to_markdown()
         (out_dir / "result.md").write_text(md, encoding="utf-8")
     except Exception:
         log.exception("Echec export markdown single-pass pour %s", pdf_path.name)
+
+    try:
+        body = _docling_html_body(doc)
+        if body:
+            _write_html_artifacts(out_dir, [(1, len(pages), body)])
+    except Exception:
+        log.exception("Echec export HTML single-pass pour %s", pdf_path.name)
 
     if progress_callback:
         progress_callback(100, "Traitement terminé.")
@@ -374,6 +430,7 @@ def _convertir_batch(
     all_tables: list[dict[str, Any]] = []
     all_sections: list[dict[str, Any]] = []
     md_parts: list[str] = []
+    html_parts: list[tuple[int, int, str]] = []
     seen_titles: set[tuple[Any, ...]] = set()
 
     fig_counter = 0
@@ -422,6 +479,15 @@ def _convertir_batch(
                     batch_start,
                     batch_end,
                 )
+
+            try:
+                body = _docling_html_body(doc)
+                if body:
+                    html_parts.append((batch_start, batch_end, body))
+            except Exception:
+                log.exception(
+                    "Echec export HTML batch pages %s-%s", batch_start, batch_end
+                )
         finally:
             tmp_pdf.unlink(missing_ok=True)
 
@@ -434,6 +500,11 @@ def _convertir_batch(
         (out_dir / "result.md").write_text(md, encoding="utf-8")
     except Exception:
         log.exception("Echec ecriture markdown batch pour %s", pdf_path.name)
+
+    try:
+        _write_html_artifacts(out_dir, html_parts)
+    except Exception:
+        log.exception("Echec ecriture HTML batch pour %s", pdf_path.name)
 
     if progress_callback:
         progress_callback(100, "Traitement terminé.")
