@@ -12,6 +12,20 @@
   font-size: 0.85rem;
 }
 
+.tables-empty-hint {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.8;
+  line-height: 1.5;
+}
+
+.tables-dims {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  color: var(--muted, #8a8f99);
+  white-space: nowrap;
+}
+
 .tables-card {
   background: var(--card, #1a1d24);
   border: 1px solid var(--border, #2a2d36);

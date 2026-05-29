@@ -29,14 +29,37 @@ function sanitizeTableHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
+/** Dimensions (lignes × colonnes) déduites du HTML de la table. */
+function tableDims(html: string): { rows: number; cols: number } | null {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const rows = doc.querySelectorAll("tr");
+  if (rows.length === 0) return null;
+  let cols = 0;
+  rows.forEach((r) => {
+    cols = Math.max(cols, r.querySelectorAll("td, th").length);
+  });
+  return { rows: rows.length, cols };
+}
+
 export function Tables({ tables, onGotoPage }: Props) {
   const safeTables = useMemo(
-    () => tables.map((t) => ({ ...t, html: t.html ? sanitizeTableHtml(t.html) : "" })),
+    () =>
+      tables.map((t) => {
+        const html = t.html ? sanitizeTableHtml(t.html) : "";
+        return { ...t, html, dims: html ? tableDims(html) : null };
+      }),
     [tables],
   );
 
   if (tables.length === 0) {
-    return <p className="tables-empty">Aucune table détectée.</p>;
+    return (
+      <div className="tables-empty">
+        <p>Aucune table détectée.</p>
+        <p className="tables-empty-hint">
+          Les tables sont extraites par Docling (PDF natifs ou scannés retraités en mode complet).
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -45,6 +68,11 @@ export function Tables({ tables, onGotoPage }: Props) {
         <div key={t.id} className="tables-card">
           <div className="tables-header">
             <span className="tables-label">{t.caption || t.id}</span>
+            {t.dims && (
+              <span className="tables-dims">
+                {t.dims.rows}×{t.dims.cols}
+              </span>
+            )}
             {t.page != null && (
               <button
                 type="button"
