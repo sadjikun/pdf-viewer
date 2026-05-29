@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, benchmarkHtmlUrl, deleteDoc, getLibrary, getResult, getTesseractStatus, getDocStatus, getAppMode, setAppMode, markdownUrl, processPdf, pdfUrl, reprocessDoc, searchablePdfUrl, type TesseractStatus } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
+import { ModeChooser } from "./components/ModeChooser/ModeChooser";
 import { Gallery } from "./components/Gallery/Gallery";
 import { Library } from "./components/Library/Library";
 import { LoadingDocling } from "./components/Loading/LoadingDocling";
@@ -87,7 +88,10 @@ function App() {
   });
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [lastDocId, setLastDocId] = useState<string | null>(() => localStorage.getItem(LS_KEY));
-  const [appMode, setAppModeState] = useState<"standard" | "ai">("standard");
+  const [appMode, setAppModeState] = useState<"standard" | "ai">(
+    () => (localStorage.getItem("app-mode-last") as "standard" | "ai") || "standard",
+  );
+  const [showModeChooser, setShowModeChooser] = useState(true);
 
   const [theme, setTheme] = useState<AppTheme>(
     () => {
@@ -202,6 +206,12 @@ function App() {
       await setAppMode(mode);
       setAppModeState(mode);
     } catch {}
+  };
+
+  const handleChooseMode = async (mode: "standard" | "ai") => {
+    await handleAppModeToggle(mode);
+    localStorage.setItem("app-mode-last", mode);
+    setShowModeChooser(false);
   };
 
   const refreshLibrary = useCallback(async () => {
@@ -582,6 +592,9 @@ function App() {
 
   return (
     <div className={`app theme-${theme} ${isDark ? "reader--dark" : "reader--light"}${sidebarOpen ? " sidebar-open" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+      {showModeChooser && (
+        <ModeChooser current={appMode} onChoose={handleChooseMode} />
+      )}
       <button
         type="button"
         className="app-hamburger"
