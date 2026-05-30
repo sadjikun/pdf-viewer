@@ -624,6 +624,39 @@ export function sectionizeHtml(
     else target.replaceWith(_makeTocNote());
   });
 
+  // FIX-046c: a TOC continuing onto a later page whose entries were flattened to text
+  // (the layout-table handler can turn a TOC <table> into bare text nodes). Layer 1
+  // stops at the first page marker and Layer 2 only sees <p class="toc-entry">, so the
+  // continuation survives. For each page chunk, if its text is dominated by section
+  // numbers glued to text ("6.1.1Link…6.2Definition…") with no real heading, drop it.
+  {
+    const _markers = Array.from(root.querySelectorAll(".pdf-page-marker"));
+    for (const marker of _markers) {
+      const parent = marker.parentElement;
+      if (!parent) continue;
+      const chunk: ChildNode[] = [];
+      let n: ChildNode | null = marker.nextSibling;
+      while (n) {
+        if ((n as Element).classList?.contains?.("pdf-page-marker")) break;
+        chunk.push(n);
+        n = n.nextSibling;
+      }
+      if (chunk.length === 0) continue;
+      const text = chunk.map((c) => c.textContent ?? "").join("");
+      const glued = (text.match(/\d+(?:\.\d+)*(?=[A-Za-z])/g) ?? []).length;
+      const hasHeading = chunk.some((c) => /^H[1-4]$/.test((c as Element).tagName ?? ""));
+      const hasNote = chunk.some((c) => (c as Element).classList?.contains?.("toc-sidebar-note"));
+      if (glued >= 6 && !hasHeading && !hasNote) {
+        for (const c of chunk) parent.removeChild(c);
+        if (!root.querySelector(".toc-sidebar-note")) {
+          const note = _makeTocNote();
+          if (marker.nextSibling) parent.insertBefore(note, marker.nextSibling);
+          else parent.appendChild(note);
+        }
+      }
+    }
+  }
+
   // FIX-040: Strip Docling MathML dollar-sign artifacts.
   // Docling embeds $...$ as <mi>$</mi>...<mi>$</mi> in the MathML body, which renders
   // as visible "$$" in the browser before KaTeX replaces the element.

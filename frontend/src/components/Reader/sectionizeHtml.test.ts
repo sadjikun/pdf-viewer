@@ -116,6 +116,23 @@ describe("sectionizeHtml — TOC table removal (TD-015 / multi-page sommaire)", 
   });
 });
 
+describe("sectionizeHtml — multi-page TOC, flattened to text (FIX-046c)", () => {
+  it("removes a TOC continuing on a later page even when its rows were flattened to text", () => {
+    // The layout-table handler can turn a TOC <table> into bare text nodes, so the
+    // continuation survives as "6.1.1Link…6.2Definition…" after the page marker.
+    const html = `<div class="pdf-page-sep" data-page="2"></div>
+<div class="docling-page" data-page-no="2"><h2>Table of Contents</h2><p>1. Intro</p><p>2.1 Composite beams</p></div>
+<div class="pdf-page-sep" data-page="3"></div>
+<div class="docling-page" data-page-no="3">6.1.1Link to ASCE Hazard Tool6.1.2Snow load changes6.1.3Wind load changes6.2Definition of steel6.3Ability to change6.3.1New options</div>
+<div class="pdf-page-sep" data-page="4"></div>
+<div class="docling-page" data-page-no="4"><h2>1. Welcome</h2><p>Real prose content on page four without glued numbers.</p></div>`;
+    const { html: out } = sectionizeHtml(html, []);
+    expect(out).not.toContain("Link to ASCE Hazard Tool"); // flattened page-3 TOC removed
+    expect(out).toContain("Real prose content on page four"); // real page kept
+    expect(out).toContain("available in sidebar"); // sidebar note present
+  });
+});
+
 describe("sectionizeHtml — table-based Table of Contents (Advance Design)", () => {
   // Real structure from cache/99cb355a (page 2): a 3-column TOC table, some rows
   // are <th> with dot-leaders. Desired: the whole TOC page is removed and replaced
