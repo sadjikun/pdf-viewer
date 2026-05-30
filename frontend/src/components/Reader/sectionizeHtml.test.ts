@@ -95,3 +95,45 @@ describe("sectionizeHtml — concatenated TOC split (TD-015 / FIX-025)", () => {
     expect(html).toContain("<p>6.1.3Seismic design requirements</p>");
   });
 });
+
+describe("sectionizeHtml — TOC table removal (TD-015 / multi-page sommaire)", () => {
+  it("removes a section-numbered TOC table that spilled onto a later page", () => {
+    // A TOC continuing on page 3 (no "Contents" heading) renders as a bare <table>;
+    // Layer 1 (heading) stops at the page marker and Layer 2 only handles <p>.
+    const html = `<div class="docling-page" data-page-no="3">
+<table><tbody>
+<tr><td>6.1.1</td><td>Link to ASCE Hazard Tool</td></tr>
+<tr><td>6.2</td><td>Definition of steel connections</td></tr>
+<tr><td>7.</td><td>Results and reports</td><td>47</td></tr>
+<tr><td>8.5.2</td><td>Calculations and results</td><td>64</td></tr>
+<tr><td>9.4</td><td>Steel Connection design module</td></tr>
+</tbody></table>
+</div>`;
+    const { html: out } = sectionizeHtml(html, []);
+    expect(out).not.toContain("Link to ASCE Hazard Tool"); // TOC table removed
+    expect(out).not.toContain("<table");
+    expect(out).toContain("available in sidebar"); // replaced by the sidebar note
+  });
+});
+
+describe("sectionizeHtml — table-based Table of Contents (Advance Design)", () => {
+  // Real structure from cache/99cb355a (page 2): a 3-column TOC table, some rows
+  // are <th> with dot-leaders. Desired: the whole TOC page is removed and replaced
+  // by the "available in sidebar" note (FIX-038), like the <p>-based TOC pages.
+  const TOC_HTML = `<div class="pdf-page-sep" data-page="2" id="pdf-p-2"></div><div class="docling-page" data-page-no="2">
+<h2>Table of Contents</h2>
+<table><tbody>
+<tr><td colspan="3">1. Welcome to Advance Design 2026</td></tr>
+<tr><td>2.1</td><td>Composite beams</td><td></td></tr>
+<tr><th colspan="2">3. Composite beams .................................................................................................9</th><td></td></tr>
+<tr><td>3.1.1</td><td>Composite beam</td><td></td></tr>
+</tbody></table>
+</div>`;
+
+  it("removes the TOC table and leaves the sidebar note, no dot-leaders", () => {
+    const out = sectionizeHtml(TOC_HTML, []).html;
+    expect(out).toContain("available in sidebar");
+    expect(out).not.toContain("Composite beams");
+    expect(out).not.toMatch(/\.{5,}/);
+  });
+});

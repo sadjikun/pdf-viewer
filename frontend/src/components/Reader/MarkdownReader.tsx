@@ -481,7 +481,7 @@ export function sectionizeHtml(
   // Docling embeds raw PDF TOC text: "7. Results and reports .....47"
   // Strip the trailing dots+page-number so only the clean title remains.
   const TOC_LEADER_RE = /[\s.·\u00B7\u2022]{3,}\s*\d*\s*(?=\||$|\n)|[\s.·\u00B7\u2022]{5,}\s*\d*\s*/g;
-  root.querySelectorAll("p, td").forEach((el) => {
+  root.querySelectorAll("p, td, th").forEach((el) => {
     const raw = el.textContent ?? "";
     if (/[.·\u00B7\u2022]{3,}/.test(raw)) {
       // Has dot-leaders → strip them (and trailing page number)
@@ -604,6 +604,25 @@ export function sectionizeHtml(
       }
     });
   }
+
+  // FIX-046b: remove TOC *tables*. A sommaire spilling onto a later page renders as a
+  // bare <table> with no "Contents" heading, so Layer 1 (heading-based, stops at the
+  // page marker) and Layer 2 (<p class="toc-entry"> only) both miss it. Detect a table
+  // whose rows mostly start with a section number (1, 2.1, 6.1.1…) and drop it.
+  const _SECTION_NO_RE = /^\s*\d+(?:\.\d+)*\.?(?:\s|$)/;
+  root.querySelectorAll("table").forEach((table) => {
+    const rows = Array.from(table.querySelectorAll(":scope > tbody > tr, :scope > tr"));
+    if (rows.length < 4) return;
+    const tocRows = rows.filter((r) => {
+      const cell = r.querySelector(":scope > td, :scope > th");
+      return !!cell && _SECTION_NO_RE.test((cell.textContent ?? "").trim());
+    });
+    if (tocRows.length < 4 || tocRows.length < rows.length * 0.7) return;
+    const target = table.closest(".table-wrap, .tw") ?? table;
+    // Keep a single sidebar note (Layer 1 may already have placed one for an earlier page).
+    if (root.querySelector(".toc-sidebar-note")) target.remove();
+    else target.replaceWith(_makeTocNote());
+  });
 
   // FIX-040: Strip Docling MathML dollar-sign artifacts.
   // Docling embeds $...$ as <mi>$</mi>...<mi>$</mi> in the MathML body, which renders
