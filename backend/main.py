@@ -334,7 +334,7 @@ def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any]) -
 
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/")
+@app.get("/health")
 def root() -> dict[str, str]:
     return {"status": "ok", "service": "pdf-viewer-api", "version": "0.2.0"}
 
