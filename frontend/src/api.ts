@@ -1,4 +1,4 @@
-import type { DocResult, LibraryResponse, AnnotationStore } from "./types";
+import type { DocResult, LibraryResponse, AnnotationStore, RegisterResult } from "./types";
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -99,8 +99,12 @@ export async function getTesseractStatus(): Promise<TesseractStatus> {
   return res.json();
 }
 
-export async function reprocessDoc(docId: string, fastMode?: boolean): Promise<DocResult | { doc_id: string; status: "processing"; progress?: number; message?: string }> {
-  const url = fastMode ? `${API_BASE}/doc/${docId}/reprocess?fast_mode=true` : `${API_BASE}/doc/${docId}/reprocess`;
+export async function reprocessDoc(docId: string, fastMode?: boolean, forceOcr?: boolean): Promise<DocResult | { doc_id: string; status: "processing"; progress?: number; message?: string }> {
+  const params = new URLSearchParams();
+  if (fastMode) params.set("fast_mode", "true");
+  if (forceOcr) params.set("force_ocr", "true");
+  const qs = params.toString();
+  const url = `${API_BASE}/doc/${docId}/reprocess${qs ? `?${qs}` : ""}`;
   const res = await fetch(url, { method: "POST" });
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
   return res.json();
@@ -164,4 +168,27 @@ export async function saveAnnotations(
 
 export function ficheUrl(docId: string, format: "html" | "md"): string {
   return `${API_BASE}/doc/${docId}/fiche?format=${format}`;
+}
+
+export async function registerPath(path: string): Promise<RegisterResult> {
+  const res = await fetch(`${API_BASE}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function previewFolder(path: string): Promise<{ pdf_count: number; pdfs: string[] }> {
+  const res = await fetch(`${API_BASE}/register/preview?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function processRegisteredDoc(docId: string, fastMode?: boolean): Promise<DocResult | DocStatus> {
+  const url = fastMode ? `${API_BASE}/doc/${docId}/process?fast_mode=true` : `${API_BASE}/doc/${docId}/process`;
+  const res = await fetch(url, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
 }

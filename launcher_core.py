@@ -11,7 +11,8 @@ import threading
 import time
 from pathlib import Path
 
-_CREATE_NO_WINDOW = 0x08000000
+_CREATE_NO_WINDOW = 0x08000000  # Windows only
+_POPEN_FLAGS: dict = {"creationflags": _CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 BACKEND_PORTS = [8000, 8001, 8002, 8003, 8080, 8888]
 FRONTEND_PORTS = [5442, 5443, 5444, 5445, 5446]
 _WEBVIEW2_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
@@ -53,15 +54,20 @@ def write_env_local(root: Path, backend_port: int) -> None:
     )
 
 
+def _venv_python(root: Path) -> Path:
+    if sys.platform == "win32":
+        return root / "backend" / ".venv" / "Scripts" / "python.exe"
+    return root / "backend" / ".venv" / "bin" / "python"
+
+
 def missing_prereqs(root: Path) -> list[str]:
     missing: list[str] = []
-    if not (root / "backend" / ".venv" / "Scripts" / "python.exe").exists():
-        missing.append("backend/.venv (lance setup.bat ou setup_dev.bat)")
-    
-    # Si le build de production existe, on n'a pas besoin de node_modules
+    installer = "setup_dev.bat" if sys.platform == "win32" else "install.sh"
+    if not _venv_python(root).exists():
+        missing.append(f"backend/.venv (run {installer})")
     dist_exists = (root / "frontend" / "dist").exists()
     if not dist_exists and not (root / "frontend" / "node_modules").exists():
-        missing.append("frontend/node_modules (lance setup_dev.bat)")
+        missing.append(f"frontend/node_modules (run {installer})")
     return missing
 
 
@@ -177,7 +183,7 @@ class ServerManager:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-        venv_py = self.root / "backend" / ".venv" / "Scripts" / "python.exe"
+        venv_py = _venv_python(self.root)
 
         self._backend = subprocess.Popen(
             [str(venv_py), "-m", "uvicorn", "main:app", "--reload",
@@ -185,9 +191,9 @@ class ServerManager:
             cwd=self.root / "backend", env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace",
-            creationflags=_CREATE_NO_WINDOW,
+            **_POPEN_FLAGS,
         )
-        
+
         threading.Thread(target=self._watch, args=(self._backend, "backend"),
                          daemon=True).start()
 
@@ -198,7 +204,7 @@ class ServerManager:
                 cwd=self.root / "frontend", env=env,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
-                creationflags=_CREATE_NO_WINDOW,
+                **_POPEN_FLAGS,
             )
             threading.Thread(target=self._watch, args=(self._frontend, "frontend"),
                              daemon=True).start()

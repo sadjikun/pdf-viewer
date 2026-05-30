@@ -392,7 +392,9 @@ def _toc_vers_outline(toc_items: list) -> list[dict[str, Any]]:
     return _construire_outline(flat)
 
 
-def _est_titre_section(line: str, has_chapters: bool = False) -> tuple[bool, int | None]:
+def _est_titre_section(
+    line: str, has_chapters: bool = False, has_x0_chapters: bool = False
+) -> tuple[bool, int | None]:
     """Retourne (is_section, level) si la ligne ressemble à un titre de section.
 
     Critères stricts pour le fast path (pas de layout ML) :
@@ -402,6 +404,10 @@ def _est_titre_section(line: str, has_chapters: bool = False) -> tuple[bool, int
     - Sections  : format X.Y minimum (au moins un point dans le numéro)
     - Texte après le numéro : >=10 chars, >=50 % lettres, >=1 mot de 3+ lettres
     - Pas de symboles mathématiques dans la suite
+
+    has_x0_chapters : True si le doc utilise le style "N.0 Titre" pour les chapitres
+      → désactive _TOP_CHAPTER_PREFIX (évite les items de liste "1. Texte..." en L1)
+      → les sections "N.0" reçoivent le niveau 1 au lieu de 2 (FIX-076)
     """
     if ".." in line:
         return False, None
@@ -417,8 +423,10 @@ def _est_titre_section(line: str, has_chapters: bool = False) -> tuple[bool, int
             return False, None
         return True, 1
 
-    # Chapitre top-level : "1. Titre" ... "99. Titre" — disabled when explicit Chapter headings exist
-    if not has_chapters:
+    # Chapitre top-level : "1. Titre" ... "99. Titre"
+    # Désactivé quand les chapitres "Chapter N:" existent, ou quand le style "N.0" est détecté
+    # (dans ce cas "1. Texte" est un item de liste, pas un chapitre — FIX-076)
+    if not has_chapters and not has_x0_chapters:
         m_top = _TOP_CHAPTER_PREFIX.match(line)
         if m_top:
             rest = line[m_top.end() - 1:].strip()
@@ -437,7 +445,8 @@ def _est_titre_section(line: str, has_chapters: bool = False) -> tuple[bool, int
 
     rest = line[m.end():].strip()
 
-    if len(rest) < 10:
+    # FIX-076 : abaissé de 10 à 5 pour capturer les titres courts comme "GENERAL" (7) ou "CRITERIA" (8)
+    if len(rest) < 5:
         return False, None
 
     # Title must start with capital letter or digit (not lowercase)
@@ -454,7 +463,15 @@ def _est_titre_section(line: str, has_chapters: bool = False) -> tuple[bool, int
     if alpha_ratio < 0.50:
         return False, None
 
-    level = m.group(1).count(".") + 1
+    # FIX-076 : sections "N.0 Titre" (ex. "1.0 INTRODUCTION", "2.0 GENERAL...") sont des
+    # chapitres top-level dans le style de numérotation "X.0". Avec dot_count + 1 elles
+    # recevraient niveau 2 — identique aux sous-sections "2.1", "3.3" — rendant l'outline
+    # plat. Si le dernier segment du numéro est "0", réduire le niveau d'un cran.
+    parts = m.group(1).split(".")
+    if has_x0_chapters and len(parts) >= 2 and parts[-1] == "0":
+        level = max(1, m.group(1).count("."))  # "1.0" → 1, "2.0" → 1
+    else:
+        level = m.group(1).count(".") + 1
     return True, level
 
 
@@ -504,6 +521,9 @@ def _line_continuation_check(lines: list[str], i: int) -> bool:
     return False
 
 
+_X0_CHAPTER = re.compile(r"^\s*\d{1,3}\.0\s+[A-ZÀ-Ü]")
+
+
 def _outline_depuis_texte_flat(page_texts: list[str]) -> list[dict[str, Any]]:
     """Variante de _outline_depuis_texte qui retourne une liste plate (sans hierarchie)."""
     flat: list[dict[str, Any]] = []
@@ -511,6 +531,12 @@ def _outline_depuis_texte_flat(page_texts: list[str]) -> list[dict[str, Any]]:
     sid = 0
 
     has_chapters = any(_CHAPTER_PREFIX.match(l) for t in page_texts for l in t.splitlines())
+    # FIX-076 : détecte le style "N.0 Titre" (ex. "1.0 INTRODUCTION", "2.0 GENERAL CONSIDERATIONS")
+    # → désactive _TOP_CHAPTER_PREFIX pour éviter les items de liste numérotés comme L1
+    has_x0_chapters = not has_chapters and any(
+        _X0_CHAPTER.match(l.strip())
+        for t in page_texts for l in t.splitlines() if l.strip()
+    )
 
     for pno, text in enumerate(page_texts):
         if _is_toc_page(text):
@@ -524,7 +550,7 @@ def _outline_depuis_texte_flat(page_texts: list[str]) -> list[dict[str, Any]]:
                 continue
             if _line_continuation_check(lines, i):
                 continue
-            ok, level = _est_titre_section(line, has_chapters)
+            ok, level = _est_titre_section(line, has_chapters, has_x0_chapters)
             if ok:
                 candidates.append((line, level or 1))
 
@@ -556,6 +582,10 @@ def _outline_depuis_texte(page_texts: list[str]) -> list[dict[str, Any]]:
     sid = 0
 
     has_chapters = any(_CHAPTER_PREFIX.match(l) for t in page_texts for l in t.splitlines())
+    has_x0_chapters = not has_chapters and any(
+        _X0_CHAPTER.match(l.strip())
+        for t in page_texts for l in t.splitlines() if l.strip()
+    )
 
     for pno, text in enumerate(page_texts):
         if _is_toc_page(text):
@@ -569,7 +599,7 @@ def _outline_depuis_texte(page_texts: list[str]) -> list[dict[str, Any]]:
                 continue
             if _line_continuation_check(lines, i):
                 continue
-            ok, level = _est_titre_section(line, has_chapters)
+            ok, level = _est_titre_section(line, has_chapters, has_x0_chapters)
             if ok:
                 candidates.append((line, level or 1))
 
@@ -1229,12 +1259,17 @@ def _split_pdf(pdf_path: Path, start: int, end: int, tmp_dir: Path) -> Path:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def convertir_pdf(
-    pdf_path: Path, 
-    out_dir: Path, 
+    pdf_path: Path,
+    out_dir: Path,
     progress_callback: Optional[Callable[[int, str], None]] = None,
-    fast_mode: bool = False
+    fast_mode: bool = False,
+    force_ocr: bool = False,
 ) -> dict[str, Any]:
-    """Convertit un PDF. Choisit automatiquement le mode fast (natif) ou Docling (scanné)."""
+    """Convertit un PDF. Choisit automatiquement le mode fast (natif) ou Docling (scanné).
+
+    force_ocr=True : force le mode Docling avec OCR activé, même si le PDF est natif.
+    Utile pour les PDFs hybrides (corps natif + pièces jointes scannées).
+    """
     _log_memory("pipeline start")
     if progress_callback:
         progress_callback(5, "Initialisation de la structure PDF...")
@@ -1328,6 +1363,9 @@ def convertir_pdf(
         }
 
     is_native = chars > _NATIVE_CHAR_MIN
+    if force_ocr and is_native:
+        is_native = False
+        print(f"[pipeline] force_ocr=True → mode Docling+OCR forcé (PDF hybride détecté comme natif)")
     print(f"[pipeline] {n_total_pages} pages, {chars} chars/3p -> {'natif (hybrid)' if is_native else 'scanne (docling)'}")
 
     figures_dir = out_dir / "figures"

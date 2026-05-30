@@ -3,6 +3,22 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-30 — FIX-077 : force_ocr pour PDFs hybrides (corps natif + pièces scannées)
+**Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/App.css`
+**Résumé :** Les PDFs hybrides (natif + pièces jointes scannées) étaient classés "natif" entier → Docling tournait sans OCR → les pages scannées apparaissaient vides dans le Reader. Nouveau paramètre `force_ocr=True` dans `convertir_pdf` qui force `is_native=False` (Docling+OCR sur tout le doc). Propagé via `run_pipeline_bg` → `POST /doc/{id}/reprocess?force_ocr=true`. Frontend : split-button "Retraiter | OCR" dans la sidebar (bouton "OCR" en orange, tooltip explicatif).
+**Fixes introduits :** FIX-077 — force_ocr pour PDFs hybrides
+**Points ouverts :** Le retraitement OCR est plus lent (~5× vs natif). L'utilisateur doit cliquer "OCR" manuellement — pas de détection automatique des hybrides.
+
+---
+
+### 2026-05-30 — FIX-075, FIX-076 : images PDF viewer + hiérarchie outline N.0
+**Fichiers modifiés :** `backend/main.py`, `backend/pipeline.py`, `memory/fixes-registry.md`
+**Résumé :** (1) Régression `get_pdf` : quand `cleaned.pdf` existait déjà en cache, la logique `needs_clean` restait False → le PDF original (avec JPEG2000) était servi → images vides dans PDF.js. Fix : vérification anticipée `if cleaned.exists(): return FileResponse(cleaned)` (FIX-075). (2) Outline texte : les chapitres "N.0 TITRE" (ex. "1.0 INTRODUCTION") recevaient le niveau 2 comme les sous-sections "N.M", aplatissant toute la hiérarchie. Nouveau flag `has_x0_chapters` (détecte le style via `_X0_CHAPTER`), désactive `_TOP_CHAPTER_PREFIX` (évite les items de liste de spec comme L1), et assigne `level = max(1, dot_count)` pour "N.0" (FIX-076). Seuil longueur minimum abaissé de 10 à 5 pour capturer "GENERAL" et "CRITERIA".
+**Fixes introduits :** FIX-075 — cleaned.pdf servi si existant, FIX-076 — niveaux outline N.0 + suppression faux positifs
+**Points ouverts :** retraitement du document `anchor-bolt-design-guide_compress` requis pour que FIX-076 prenne effet (outline en cache non mis à jour). "2.2 GLOSSARY OF TERMS" reste absent car le titre n'apparaît pas dans le texte extrait par pypdfium2.
+
+---
+
 ### 2026-05-30 — Nettoie et réorganise les dossiers et scripts du projet
 **Fichiers modifiés :** `docs/` (réorganisé), `scripts/` (nouveau), `setup_dev.bat` (renommé depuis `install.bat`), `.gitignore`, `build.bat`, `build_installer.py`, `launcher.bat`, `launcher_core.py`, `README.md`, `CHANGELOG.md`, `memory/INDEX.md`
 **Résumé :** Réorganisation de la racine du projet en déplaçant les fichiers de spécification et d'historique obsolètes dans `docs/archive/` and `docs/`. Renommage de `install.bat` en `setup_dev.bat` pour le distinguer de `setup.bat` (installateur end-user). Déplacement des scripts utilitaires dans `scripts/` et mise à jour de toutes les références pour un espace de travail propre.

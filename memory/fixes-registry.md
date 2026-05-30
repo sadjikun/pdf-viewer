@@ -1420,6 +1420,91 @@ syncTimerRef.current = window.setTimeout(() => {
 
 ---
 
+### FIX-075 — `get_pdf` : servir `cleaned.pdf` existant (régression servait source)
+**Fichier :** `backend/main.py` → `GET /doc/{doc_id}/pdf`  
+**Problème :** Quand `cleaned.pdf` existait déjà en cache, `needs_clean` restait `False`
+(le branch `if is_native and not cleaned.exists()` était ignoré), et la fonction
+tombait sur `return FileResponse(source, ...)` → servait le PDF original avec images
+JPEG2000 invisibles dans PDF.js.  
+**Fix :** Vérification anticipée : si `cleaned.pdf` existe déjà, le retourner immédiatement
+avant tout calcul de `needs_clean`.  
+**Code clé :**
+```python
+if cleaned.exists():
+    return FileResponse(cleaned, media_type="application/pdf")
+# puis logique needs_clean / _needs_rasterize / _repair_icc_profiles
+```
+**Invariant :** La présence de `cleaned.pdf` est la seule preuve qu'une rasterisation était
+nécessaire. Ne jamais la contourner.
+
+---
+
+### FIX-076 — Outline texte : niveaux "N.0" et faux positifs items de liste
+**Fichiers :** `backend/pipeline.py` → `_est_titre_section()` + `_outline_depuis_texte*`  
+**Problème :** (a) `_SECTION_PREFIX` comptait les points : "1.0 Introduction" = 1 point →
+niveau 2, identique à "2.1 Types of Anchors" → tout l'outline plat au niveau 2, sans
+hiérarchie. (b) `_TOP_CHAPTER_PREFIX` ("N. Titre") capturait les items de liste numérotés
+des sections de spec ("1. Cutting Tools - ...", "3. A706 - ...") comme chapitres L1 parasites.
+(c) Titres courts comme "3.1. GENERAL" (7 chars) filtrés par `len(rest) < 10`.  
+**Fix :**
+- `has_x0_chapters` : détecte le style "N.0 TITRE" via `_X0_CHAPTER = re.compile(r"^\s*\d{1,3}\.0\s+[A-ZÀ-Ü]")`. Transmis à `_est_titre_section`.
+- Quand `has_x0_chapters=True` : désactive `_TOP_CHAPTER_PREFIX` ; les sections "N.0" reçoivent `level = max(1, dot_count)` (ex. "1.0" → 1, "2.0" → 1).
+- Seuil longueur minimum : `len(rest) < 5` (au lieu de 10) pour capturer "GENERAL", "CRITERIA".  
+**Code clé :**
+```python
+_X0_CHAPTER = re.compile(r"^\s*\d{1,3}\.0\s+[A-ZÀ-Ü]")
+
+# Dans _est_titre_section :
+if has_x0_chapters and len(parts) >= 2 and parts[-1] == "0":
+    level = max(1, m.group(1).count("."))  # "1.0" → 1
+else:
+    level = m.group(1).count(".") + 1
+
+# Dans _outline_depuis_texte* :
+has_x0_chapters = not has_chapters and any(
+    _X0_CHAPTER.match(l.strip()) for t in page_texts for l in t.splitlines() if l.strip()
+)
+```
+**Invariant :** Ne pas réduire le seuil de longueur en dessous de 5 (évite les faux positifs
+sur des fragments de texte comme "1.2. A" ou "3.1. -"). `has_x0_chapters` n'est activé que si
+`has_chapters=False` (les deux styles ne coexistent pas dans un même doc).  
+**Résultat :** Outline correctement hiérarchique pour les PDFs à numérotation "N.0"
+(ex. anchor-bolt-design-guide : 1.0→L1, 2.1→L2/enfant de 2.0, 6.0→L1 avec sous-sections L2).  
+**Nécessite retraitement** du document pour prendre effet (outline en cache non mis à jour).
+
+---
+
+### FIX-077 — `force_ocr` : retraitement OCR forcé pour PDFs hybrides
+**Fichiers :** `backend/pipeline.py` → `convertir_pdf` | `backend/main.py` → `run_pipeline_bg` + `POST /reprocess` | `frontend/src/api.ts` → `reprocessDoc` | `frontend/src/App.tsx` + `App.css`  
+**Problème :** Les PDFs hybrides (corps natif + pièces jointes scannées, ex. pages 33-82 scannées dans un doc natif) étaient classés "natif" entier (`chars > _NATIVE_CHAR_MIN` sur les 3 premières pages) → `do_ocr=False` → pages scannées traitées sans OCR → vides dans le Reader.  
+**Fix :** Nouveau paramètre `force_ocr: bool = False` dans `convertir_pdf`. Quand `True`, force `is_native = False` même si la densité de texte est élevée → Docling+OCR activé sur tout le document. Propagé via `run_pipeline_bg(force_ocr=...)` → `POST /doc/{id}/reprocess?force_ocr=true`. Frontend : split-button "Retraiter | OCR" (bouton "OCR" en orange `.app-reset--ocr`).  
+**Code clé :**
+```python
+# pipeline.py — convertir_pdf
+if force_ocr and is_native:
+    is_native = False
+    print("[pipeline] force_ocr=True → mode Docling+OCR forcé")
+```
+```typescript
+// api.ts
+export async function reprocessDoc(docId, fastMode?, forceOcr?) {
+  const params = new URLSearchParams();
+  if (fastMode) params.set("fast_mode", "true");
+  if (forceOcr) params.set("force_ocr", "true");
+  ...
+}
+```
+```tsx
+// App.tsx — split-button
+<div className="app-reprocess-group">
+  <button onClick={() => handleReprocess(false)}>Retraiter</button>
+  <button className="app-reset--ocr" onClick={() => handleReprocess(true)}>OCR</button>
+</div>
+```
+**Invariant :** `force_ocr=True` désactive aussi `fast_mode` (ils sont mutuellement exclusifs — `fast_mode` bypasse Docling, `force_ocr` en a besoin). Cette logique est dans `handleReprocess`: `const fastMode = !forceOcr && appMode === "standard"`.
+
+---
+
 ## Ajouter un nouveau FIX
 
 Incrémenter depuis le dernier existant. Format :

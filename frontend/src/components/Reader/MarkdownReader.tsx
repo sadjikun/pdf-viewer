@@ -6,15 +6,20 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import katex from "katex";
 import { htmlUrl, htmlManifestUrl, htmlPartUrl, markdownUrl, API_BASE, getAnnotations, saveAnnotations, ficheUrl } from "../../api";
-import type { HtmlManifestEntry, OutlineNode, Figure, AnnotationStore } from "../../types";
+import type { HtmlManifestEntry, OutlineNode, AnnotationStore } from "../../types";
 import { FigureOverlay } from "../Figure/FigureOverlay";
+import { buildExportHtml, downloadHtmlFile } from "./buildExportHtml";
+import { useAppearance, type FontSize, type LineHeight } from "./hooks/useAppearance";
+import { useTts } from "./hooks/useTts";
+import { useImageLightbox } from "./hooks/useImageLightbox";
+import { useSearch } from "./hooks/useSearch";
 import "./MarkdownReader.css";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/atom-one-dark.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Section {
+export interface Section {
   id: string;
   title: string;
   level: number;
@@ -67,10 +72,6 @@ interface PaperMeta {
   abstract: string | null;
   keywords: string[];
 }
-
-type FontSize = "sm" | "md" | "lg" | "xl" | "xxl";
-type LineHeight = "compact" | "normal" | "relaxed";
-type FontFamily = "serif" | "sans";
 
 const cleanPdfTitle = (title?: string) => {
   if (!title) return "";
@@ -1204,7 +1205,37 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   // onPageChange pendant la durée de l'animation (≈ 600 ms).
   const isProgrammaticScrollRef = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Appearance hook (zero coupling)
+  const {
+    fontSize, setFontSize,
+    lineHeight, setLineHeight,
+    fontFamily, setFontFamily,
+    readerZoom, setReaderZoom,
+    showZoomPop, setShowZoomPop,
+    pageMode, setPageMode,
+    showTypoPop, setShowTypoPop,
+    showThemePop, setShowThemePop,
+  } = useAppearance();
+
+  // TTS hook
+  const {
+    ttsActive, setTtsActive,
+    ttsPaused, setTtsPaused,
+    ttsRate, setTtsRate,
+    handlePlayTTS,
+    handlePauseTTS,
+    handleStopTTS,
+    getSpeakText,
+  } = useTts(contentRef);
+
+  // Image lightbox hook
+  const {
+    readerImageIdx,
+    setReaderImageIdx,
+    readerImages,
+  } = useImageLightbox(contentRef);
+  
   const [md, setMd] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [rawHtmlForDownload, setRawHtmlForDownload] = useState<string | null>(null);
@@ -1231,45 +1262,17 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appTheme]);
-  const [fontSize, setFontSize] = useState<FontSize>("md");
-  const [lineHeight, setLineHeight] = useState<LineHeight>("normal");
-  const [fontFamily, setFontFamily] = useState<FontFamily>("sans");
   const [focusSid, setFocusSid] = useState<string | null>(null);
   const [focusIdx, setFocusIdx] = useState(0);
   const [progress, setProgress] = useState(0);
   const [showJumpTop, setShowJumpTop] = useState(false);
-  const [showTypoPop, setShowTypoPop] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paperMeta, setPaperMeta] = useState<PaperMeta | null>(null);
   const [breadcrumb, setBreadcrumb] = useState<string>(() =>
     cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document")
   );
-  const [readerImageIdx, setReaderImageIdx] = useState<number | null>(null);
-  const [readerImages, setReaderImages] = useState<Figure[]>([]);
   const [showMiniToc, setShowMiniToc] = useState(false);
   const [activeSid, setActiveSid] = useState<string | null>(null);
-  const [readerZoom, setReaderZoom] = useState(100);
-  const [showZoomPop, setShowZoomPop] = useState(false);
-
-  // ── Search state ────────────────────────────────────────────────────────────
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchCount, setSearchCount] = useState(0);
-  const [searchIdx, setSearchIdx] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Synchronise la recherche globale de la sidebar avec le Reader
-  useEffect(() => {
-    if (propSearchQuery !== undefined) {
-      setSearchQuery(propSearchQuery);
-      if (propSearchQuery.trim()) {
-        setShowSearch(true);
-      } else {
-        setShowSearch(false);
-        setSearchCount(0);
-      }
-    }
-  }, [propSearchQuery]);
 
   // ── PDF page navigation state (FIX-016) ─────────────────────────────────────
   const [pdfPageNos, setPdfPageNos] = useState<number[]>([]);
@@ -1285,16 +1288,10 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   const [showNotesList, setShowNotesList] = useState(false);
   const [showFicheMenu, setShowFicheMenu] = useState(false);
 
-  // ── TTS ───────────────────────────────────────────────────────────────────
-  const [ttsActive, setTtsActive] = useState(false);
-  const [ttsPaused, setTtsPaused] = useState(false);
-  const [ttsRate, setTtsRate] = useState(1.0);
   const [showTtsPop, setShowTtsPop] = useState(false);
 
-  // ── Highlight popover & page mode ─────────────────────────────────────────
+  // ── Highlight popover ───────────────────────────────────────────────────────
   const [showHlPop, setShowHlPop] = useState(false);
-  const [showThemePop, setShowThemePop] = useState(false);
-  const [pageMode, setPageMode] = useState(false);
   const [noteText, setNoteText] = useState("");
 
   // ── Annotation persistence ────────────────────────────────────────────────
@@ -1413,6 +1410,15 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       : htmlContent;
   }, [htmlContent, focusSid, focusIdx, sections, paperMeta, outline]);
 
+  // Search hook
+  const {
+    showSearch, setShowSearch,
+    searchQuery, setSearchQuery,
+    searchCount, setSearchCount,
+    searchIdx, setSearchIdx,
+    searchInputRef,
+  } = useSearch(contentRef, propSearchQuery, visibleHtml);
+
   // Load highlights & notes when docId changes (server-first + localStorage migration)
   useEffect(() => {
     if (!docId) return;
@@ -1464,9 +1470,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
     setBreadcrumb(cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document"));
     // Clean up TTS when changing document
-    window.speechSynthesis.cancel();
-    setTtsActive(false);
-    setTtsPaused(false);
+    handleStopTTS();
 
     return () => {
       cancelled = true;
@@ -1493,85 +1497,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
     return () => clearTimeout(timer);
   }, [visibleHtml, highlights, notes, renderMode]);
-
-  // Clean up TTS on component unmount
-  useEffect(() => {
-    return () => {
-      window.speechSynthesis.cancel();
-    };
-  }, []);
-
-  // ── In-reader search: inject/remove <mark> elements ──────────────────────
-  useEffect(() => {
-    const doc = contentRef.current?.querySelector<HTMLElement>(".reader-doc");
-    if (!doc) return;
-
-    const timer = setTimeout(() => {
-      // Remove existing marks (unwrap them to restore text nodes)
-      doc.querySelectorAll("mark.reader-sm").forEach((m) => {
-        const parent = m.parentNode;
-        if (!parent) return;
-        parent.replaceChild(document.createTextNode(m.textContent ?? ""), m);
-        parent.normalize();
-      });
-
-      const query = searchQuery.trim().toLowerCase();
-      if (!query) { setSearchCount(0); return; }
-
-      const SKIP = new Set(["SCRIPT", "STYLE", "MARK", "NOSCRIPT"]);
-      const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) => {
-          const p = node.parentElement;
-          return p && SKIP.has(p.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-        },
-      });
-
-      const textNodes: Text[] = [];
-      let node: Node | null;
-      while ((node = walker.nextNode())) {
-        if ((node as Text).textContent?.toLowerCase().includes(query)) {
-          textNodes.push(node as Text);
-        }
-      }
-
-      let count = 0;
-      textNodes.forEach((tn) => {
-        const text = tn.textContent ?? "";
-        const lower = text.toLowerCase();
-        const frag = document.createDocumentFragment();
-        let pos = 0;
-        let idx = lower.indexOf(query, pos);
-        while (idx !== -1) {
-          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-          const mark = document.createElement("mark");
-          mark.className = "reader-sm";
-          mark.dataset.mid = String(count++);
-          mark.textContent = text.slice(idx, idx + query.length);
-          frag.appendChild(mark);
-          pos = idx + query.length;
-          idx = lower.indexOf(query, pos);
-        }
-        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
-        tn.parentNode?.replaceChild(frag, tn);
-      });
-
-      setSearchCount(count);
-      setSearchIdx(0);
-    }, 160);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, visibleHtml]);
-
-  // Scroll to active search result
-  useEffect(() => {
-    if (!searchCount) return;
-    const mark = contentRef.current?.querySelector<HTMLElement>(`.reader-sm[data-mid="${searchIdx}"]`);
-    contentRef.current?.querySelectorAll(".reader-sm").forEach((m) => m.classList.remove("is-active"));
-    if (mark) {
-      mark.classList.add("is-active");
-      mark.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [searchIdx, searchCount]);
 
   // Handle text selection highlighting
   const handleMouseUp = () => {
@@ -1698,63 +1623,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       setNoteText(notes[key] ?? "");
     }
   }, [notes]);
-
-  // Get text for Speech Synthesis
-  const getSpeakText = (): string => {
-    if (!contentRef.current) return "";
-    const docEl = contentRef.current.querySelector(".reader-doc");
-    if (!docEl) return "";
-
-    const temp = docEl.cloneNode(true) as HTMLElement;
-    temp.querySelectorAll("script, style, .katex, annotation, math, svg").forEach(el => el.remove());
-    return temp.textContent || "";
-  };
-
-  // TTS Controls
-  const handlePlayTTS = () => {
-    if (ttsPaused) {
-      window.speechSynthesis.resume();
-      setTtsPaused(false);
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const text = getSpeakText();
-    if (!text) return;
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "fr-FR";
-    utterance.rate = ttsRate;
-
-    utterance.onend = () => {
-      setTtsActive(false);
-      setTtsPaused(false);
-    };
-
-    utterance.onerror = () => {
-      setTtsActive(false);
-      setTtsPaused(false);
-    };
-
-    utteranceRef.current = utterance;
-    setTtsActive(true);
-    setTtsPaused(false);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const handlePauseTTS = () => {
-    if (ttsActive && !ttsPaused) {
-      window.speechSynthesis.pause();
-      setTtsPaused(true);
-    }
-  };
-
-  const handleStopTTS = () => {
-    window.speechSynthesis.cancel();
-    setTtsActive(false);
-    setTtsPaused(false);
-  };
-
 
   // ── Imperative handle (synchronized compare mode) ─────────────────────────
   useImperativeHandle(ref, () => ({
@@ -2076,60 +1944,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     return () => el.removeEventListener("scroll", onScroll);
   }, [renderMode, onPageChange]);
 
-  // Collect all images in the current reader view
-  const getReaderImages = (): Figure[] => {
-    const el = contentRef.current;
-    if (!el) return [];
-    const imgs = el.querySelectorAll("img");
-    const list: Figure[] = [];
-    imgs.forEach((img) => {
-      const src = img.src || img.getAttribute("src") || "";
-      if (!src) return;
-      if (list.some((item) => item.id === src)) return;
-      const pageNoAttr = img.closest(".docling-page")?.getAttribute("data-page-no");
-      const page = pageNoAttr ? parseInt(pageNoAttr, 10) : null;
-      const captionText = img.closest("figure")?.querySelector("figcaption")?.textContent || "";
-      list.push({
-        id: src,
-        page,
-        bbox: null,
-        caption: captionText,
-      });
-    });
-    return list;
-  };
-
-  // ── Image lightbox (click to zoom) ──────────────────────────────────────
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const handler = (e: MouseEvent) => {
-      const img = (e.target as Element).closest("img") as HTMLImageElement | null;
-      if (!img) return;
-      const src = img.src || img.getAttribute("src");
-      if (src) {
-        const imgs = getReaderImages();
-        setReaderImages(imgs);
-        const idx = imgs.findIndex((item) => item.id === src);
-        if (idx !== -1) {
-          setReaderImageIdx(idx);
-        } else {
-          setReaderImages([{ id: src, page: null, bbox: null, caption: img.alt || "" }]);
-          setReaderImageIdx(0);
-        }
-      }
-    };
-    el.addEventListener("click", handler);
-    return () => el.removeEventListener("click", handler);
-  }, []);
-
-  useEffect(() => {
-    if (readerImageIdx === null) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setReaderImageIdx(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [readerImageIdx]);
-
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   // J/K: navigate sections in focus mode | F: toggle focus | Esc: close panels
   useEffect(() => {
@@ -2331,433 +2145,14 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
   const handleDownloadHTML = () => {
     if (!htmlContent) return;
-
-    // Use DOMParser to inject current highlights and notes
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, "text/html");
-
-    // Clean up existing highlights in the source if any, then re-apply
-    removeAllHighlights(doc.body);
-    highlights.forEach((hl) => {
-      const hasNote = !!notes[hl.key];
-      restoreHighlight(doc.body, hl, hasNote);
+    const exportedHtml = buildExportHtml({
+      htmlContent,
+      highlights,
+      notes,
+      filename,
+      paperMeta,
     });
-
-    // Resolve relative image URLs to absolute backend URLs in the exported HTML
-    doc.querySelectorAll("img").forEach((img) => {
-      const src = img.getAttribute("src") ?? "";
-      if (src.startsWith("/doc/")) {
-        img.setAttribute("src", `${API_BASE}${src}`);
-      }
-    });
-
-    const title = paperMeta?.title || filename || "Document";
-
-    // Inline CSS for the interactive features & styling themes in the exported HTML
-    const styles = `
-      :root {
-        --or: #ff8c00;
-        --bg: #fafafa;
-        --bg2: #ffffff;
-        --bg3: #f3f4f6;
-        --tx: #171717;
-        --tx2: #404040;
-        --tx3: #737373;
-        --bd: #e5e7eb;
-        --bd2: #d1d5db;
-        --fu: 'Outfit', system-ui, sans-serif;
-        --fb: 'Lora', 'Source Serif 4', Georgia, serif;
-      }
-      [data-theme="dark"] {
-        --bg: #0a0b10;
-        --bg2: #12131a;
-        --bg3: #181a24;
-        --tx: #f3f4f6;
-        --tx2: #d1d5db;
-        --tx3: #9ca3af;
-        --bd: rgba(255, 255, 255, 0.08);
-        --bd2: rgba(255, 255, 255, 0.16);
-      }
-      body {
-        margin: 0;
-        padding: 0;
-        font-family: var(--fu);
-        background: var(--bg);
-        color: var(--tx);
-        transition: background 0.3s, color 0.3s;
-      }
-      header {
-        background: var(--bg2);
-        border-bottom: 1px solid var(--bd);
-        padding: 12px 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        position: sticky;
-        top: 0;
-        z-index: 100;
-      }
-      .logo {
-        font-weight: 700;
-        color: var(--or);
-        font-size: 18px;
-      }
-      .tbtn {
-        background: var(--bg3);
-        border: 1px solid var(--bd);
-        padding: 6px 12px;
-        border-radius: 6px;
-        cursor: pointer;
-        color: var(--tx);
-        font-family: inherit;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .tbtn:hover {
-        border-color: var(--or);
-        color: var(--or);
-      }
-      .container {
-        max-width: 800px;
-        margin: 40px auto;
-        padding: 0 24px;
-      }
-      .reader-hl {
-        cursor: pointer;
-        border-radius: 2px;
-        padding: 1px 0;
-        transition: background-color 0.2s;
-      }
-      .reader-hl--has-note {
-        border-bottom: 2.5px dashed var(--or);
-      }
-      .reader-doc {
-        line-height: 1.85;
-        font-size: 16px;
-        font-family: var(--fb);
-      }
-      .reader-doc h1 {
-        font-family: var(--fu);
-        border-bottom: 2px solid var(--or);
-        padding-bottom: 8px;
-        margin-top: 32px;
-      }
-      .reader-doc h2 {
-        font-family: var(--fu);
-        border-bottom: 1px solid var(--bd);
-        padding-bottom: 6px;
-        margin-top: 28px;
-      }
-      .reader-doc p {
-        text-align: justify;
-        margin-bottom: 16px;
-      }
-      /* KaTeX formulas */
-      annotation {
-        display: none !important;
-      }
-      .formula, .equation {
-        background: rgba(8, 145, 178, 0.05);
-        border-left: 4px solid #0891b2;
-        padding: 16px;
-        margin: 20px 0;
-        text-align: center;
-        overflow-x: auto;
-        border-radius: 8px;
-      }
-      /* Table styling */
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 24px 0;
-      }
-      th {
-        background: var(--or);
-        color: white;
-        padding: 10px;
-        text-align: left;
-      }
-      td {
-        border-bottom: 1px solid var(--bd);
-        padding: 10px;
-      }
-      tr:nth-child(even) td {
-        background: var(--bg3);
-      }
-      /* Note panel styling for offline */
-      #note-panel {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        width: 320px;
-        background: var(--bg2);
-        border: 1px solid var(--bd2);
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-        display: none;
-        z-index: 1000;
-        box-sizing: border-box;
-      }
-      #note-panel h4 {
-        margin: 0 0 8px 0;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--or);
-        text-transform: uppercase;
-        letter-spacing: .05em;
-      }
-      #note-context {
-        margin: 0 0 10px 0;
-        font-size: 11px;
-        color: var(--tx3);
-        font-style: italic;
-        background: var(--bg3);
-        padding: 6px 10px;
-        border-radius: 6px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      #note-text {
-        width: 100%;
-        height: 90px;
-        background: var(--bg3);
-        color: var(--tx);
-        border: 1px solid var(--bd);
-        border-radius: 8px;
-        padding: 8px;
-        font-family: inherit;
-        font-size: 13px;
-        box-sizing: border-box;
-        margin-bottom: 12px;
-        outline: none;
-        resize: none;
-      }
-      .panel-buttons {
-        display: flex;
-        justify-content: flex-end;
-      }
-      .panel-btn {
-        background: var(--or);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 16px;
-        cursor: pointer;
-        font-weight: 600;
-        font-family: inherit;
-      }
-
-      /* PDF Page markers */
-      .pdf-page-marker {
-        margin: 52px 0 0;
-        user-select: none;
-      }
-      .pdf-page-footer-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 5px 14px;
-        background: var(--bg3);
-        border: 1px solid var(--bd);
-        border-bottom: none;
-        font-family: var(--fu);
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.04em;
-        color: var(--tx3);
-      }
-      .pdf-page-header-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 5px 14px;
-        background: var(--bg3);
-        border: 1px solid var(--bd);
-        border-top: none;
-        font-family: var(--fu);
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.04em;
-        color: var(--tx3);
-      }
-      .pdf-pbb-pg--current {
-        font-weight: 700;
-        color: var(--or);
-      }
-      .pdf-page-divider-line {
-        height: 2px;
-        background: linear-gradient(90deg, transparent, var(--bd2) 20%, var(--bd2) 80%, transparent);
-      }
-
-      /* Print Media Styles */
-      @media print {
-        @page {
-          size: A4 portrait;
-          margin: 20mm;
-        }
-        body,
-        .container,
-        .reader-doc {
-          background: #ffffff !important;
-          background-color: #ffffff !important;
-          color: #000000 !important;
-        }
-        header {
-          display: none !important;
-        }
-        .container {
-          max-width: 100% !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        .reader-doc p,
-        .reader-doc li,
-        .reader-doc h1,
-        .reader-doc h2,
-        .reader-doc h3,
-        .reader-doc h4 {
-          color: #000000 !important;
-        }
-        .pdf-page-marker {
-          display: block !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: transparent !important;
-          border: none !important;
-        }
-        .pdf-page-footer-bar {
-          display: flex !important;
-          page-break-after: avoid !important;
-          break-after: avoid !important;
-          margin-top: 10mm !important;
-          border: none !important;
-          background: transparent !important;
-        }
-        .pdf-page-header-bar {
-          display: flex !important;
-          page-break-before: always !important;
-          break-before: page !important;
-          margin-top: 10mm !important;
-          border: none !important;
-          background: transparent !important;
-        }
-        .pdf-page-divider-line {
-          display: none !important;
-        }
-        table, tr, td, th {
-          background: transparent !important;
-          background-color: transparent !important;
-          color: #000000 !important;
-          border-color: #dddddd !important;
-        }
-        th {
-          border-bottom: 2px solid #000000 !important;
-        }
-      }
-    `;
-
-    const notesJson = JSON.stringify(notes);
-    const script = `
-      const notes = ${notesJson};
-      document.addEventListener('DOMContentLoaded', () => {
-        const panel = document.getElementById('note-panel');
-        const context = document.getElementById('note-context');
-        const text = document.getElementById('note-text');
-        
-        document.querySelectorAll('.reader-hl').forEach(span => {
-          span.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const key = span.getAttribute('data-key');
-            context.textContent = span.textContent.slice(0, 60) + '...';
-            text.value = notes[key] || "Pas de note pour ce surlignage.";
-            panel.style.display = 'block';
-          });
-        });
-        
-        document.getElementById('close-panel').addEventListener('click', () => {
-          panel.style.display = 'none';
-        });
-
-        // Toggle theme
-        const themeBtn = document.getElementById('theme-btn');
-        let currentTheme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', currentTheme);
-        themeBtn.textContent = currentTheme === 'dark' ? '☀️ Mode Clair' : '🌙 Mode Sombre';
-
-        themeBtn.addEventListener('click', () => {
-          currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', currentTheme);
-          localStorage.setItem('theme', currentTheme);
-          themeBtn.textContent = currentTheme === 'dark' ? '☀️ Mode Clair' : '🌙 Mode Sombre';
-        });
-      });
-    `;
-
-    const exportedHtml = `
-      <!DOCTYPE html>
-      <html lang="fr" data-theme="light">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>${title}</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-        <style>${styles}</style>
-      </head>
-      <body>
-        <header>
-          <div class="logo">📚 ${title}</div>
-          <div style="display:flex; gap:10px;">
-            <button id="theme-btn" class="tbtn">🌙 Mode Sombre</button>
-            <button class="tbtn" onclick="window.print()">🖨 Imprimer</button>
-          </div>
-        </header>
-
-        <div class="container">
-          <div class="reader-doc">
-            ${doc.body.innerHTML}
-          </div>
-        </div>
-        
-        <div id="note-panel">
-          <h4>Annotation</h4>
-          <div id="note-context"></div>
-          <textarea id="note-text" readonly></textarea>
-          <div class="panel-buttons">
-            <button id="close-panel" class="panel-btn">Fermer</button>
-          </div>
-        </div>
-
-        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
-        <script>
-          document.addEventListener("DOMContentLoaded", function() {
-            renderMathInElement(document.body, {
-              delimiters: [
-                {left: "$$", right: "$$", display: true},
-                {left: "$", right: "$", display: false},
-                {left: "\\\\(", right: "\\\\)", display: false},
-                {left: "\\\\[", right: "\\\\]", display: true}
-              ],
-              throwOnError: false
-            });
-          });
-        </script>
-        <script>${script}</script>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([exportedHtml], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = downloadName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadHtmlFile(exportedHtml, downloadName);
   };
 
 
@@ -3036,7 +2431,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                               setTtsActive(false);
                               setTtsPaused(false);
                             };
-                            utteranceRef.current = utterance;
                             setTtsActive(true);
                             setTtsPaused(false);
                             window.speechSynthesis.speak(utterance);

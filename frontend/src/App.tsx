@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, benchmarkHtmlUrl, deleteDoc, getLibrary, getResult, getTesseractStatus, getDocStatus, getAppMode, setAppMode, markdownUrl, processPdf, pdfUrl, reprocessDoc, searchablePdfUrl, type TesseractStatus } from "./api";
+import { ApiError, benchmarkHtmlUrl, deleteDoc, getLibrary, getResult, getTesseractStatus, getDocStatus, getAppMode, setAppMode, markdownUrl, processPdf, pdfUrl, reprocessDoc, searchablePdfUrl, processRegisteredDoc, type TesseractStatus } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { ModeChooser } from "./components/ModeChooser/ModeChooser";
 import { Gallery } from "./components/Gallery/Gallery";
@@ -339,7 +339,11 @@ function App() {
       setActiveId(null);
       activeIdRef.current = null;
       setFigureIdx(null);
-      setViewMode(result.extraction_mode === "markitdown" ? "reader" : "reader");
+      if (result.extraction_mode === "registered") {
+        setViewMode("pdf");
+      } else {
+        setViewMode(result.extraction_mode === "markitdown" ? "reader" : "reader");
+      }
       localStorage.setItem(LS_KEY, docId);
       setLastDocId(docId);
     } catch (e) {
@@ -348,6 +352,22 @@ function App() {
       else setError("Erreur d'ouverture du document.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleProcessRegistered = async (docId: string) => {
+    setLoading(true);
+    setProgressPercent(0);
+    setProgressMessage("Démarrage du traitement IA...");
+    setError(null);
+    try {
+      const fastMode = appMode === "standard";
+      await processRegisteredDoc(docId, fastMode);
+      startPolling(docId);
+    } catch (err: any) {
+      setError(err.message || "Erreur lors du traitement");
+      setLoading(false);
+      setProgressPercent(null);
     }
   };
 
@@ -436,13 +456,13 @@ function App() {
     refreshLibrary();
   };
 
-  const handleReprocess = async () => {
+  const handleReprocess = async (forceOcr = false) => {
     if (!doc) return;
-    const fastMode = appMode === "standard";
+    const fastMode = !forceOcr && appMode === "standard";
     setReprocessing(true);
     setError(null);
     try {
-      const res = await reprocessDoc(doc.doc_id, fastMode);
+      const res = await reprocessDoc(doc.doc_id, fastMode, forceOcr);
       if ("status" in res && res.status === "processing") {
         setDoc(null);
         startPolling(res.doc_id);
@@ -568,6 +588,7 @@ function App() {
           onDelete={handleDeleteDocument}
           onUpload={handleFile}
           onRefresh={refreshLibrary}
+          onProcess={handleProcessRegistered}
         />
         <footer className="app-footer">
           Créé par <strong>MHDINGBI</strong> &amp; <strong>sadj-kun</strong>
@@ -580,11 +601,12 @@ function App() {
   const tables = doc.tables ?? [];
   const total = figures.length;
   const current = figureIdx != null ? figures[figureIdx] : null;
+  const isRegistered = doc.extraction_mode === "registered";
   const isNativeMode = doc.extraction_mode === "native" || doc.extraction_mode === "fast";
   const isMarkitdown = doc.extraction_mode === "markitdown";
 
-  // Pour les fichiers non-PDF, forcer le mode Reader (jamais compare)
-  const effectiveViewMode = isMarkitdown ? "reader" : viewMode;
+  // Pour les fichiers non-PDF, forcer le mode Reader (jamais compare). Pour les non-traités, forcer PDF.
+  const effectiveViewMode = isRegistered ? "pdf" : (isMarkitdown ? "reader" : viewMode);
 
   // Item 9 : titre du document : pdf_title (métadonnées) > nom de fichier > ID court
   const docTitle = cleanPdfTitle(doc.pdf_title)
@@ -691,15 +713,26 @@ function App() {
               </a>
             )}
             {!isMarkitdown && (
-              <button
-                type="button"
-                className="app-reset"
-                onClick={handleReprocess}
-                disabled={reprocessing}
-                title={appMode === "ai" ? "Retraitement complet — Florence-2 + Texify" : "Retraitement rapide — extraction native"}
-              >
-                {reprocessing ? "…" : "Retraiter"}
-              </button>
+              <div className="app-reprocess-group">
+                <button
+                  type="button"
+                  className="app-reset"
+                  onClick={() => handleReprocess(false)}
+                  disabled={reprocessing}
+                  title={appMode === "ai" ? "Retraitement complet — Florence-2 + Texify" : "Retraitement rapide — extraction native"}
+                >
+                  {reprocessing ? "…" : "Retraiter"}
+                </button>
+                <button
+                  type="button"
+                  className="app-reset app-reset--ocr"
+                  onClick={() => handleReprocess(true)}
+                  disabled={reprocessing}
+                  title="Retraitement avec OCR forcé — utile pour les PDFs hybrides (pages scannées dans un PDF natif)"
+                >
+                  OCR
+                </button>
+              </div>
             )}
             <button type="button" className="app-reset" onClick={goHome}>
               Bibliothèque
@@ -792,8 +825,8 @@ function App() {
           </button>
         </div>
 
-        {/* Toggle PDF / Reader / Comparer — masqué pour les fichiers non-PDF */}
-        {!isMarkitdown && (
+        {/* Toggle PDF / Reader / Comparer — masqué pour les fichiers non-PDF et non-traités */}
+        {!isMarkitdown && !isRegistered && (
           <div className="app-view-toggle" role="group" aria-label="Mode d'affichage">
             <button
               type="button"
@@ -858,48 +891,69 @@ function App() {
 
         <SearchBar value={query} onChange={setQuery} />
 
-        <div className="app-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "outline"}
-            className={`app-tab${tab === "outline" ? " is-active" : ""}`}
-            onClick={() => setTab("outline")}
-          >
-            Sommaire
-          </button>
-          {!isMarkitdown && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "gallery"}
-              className={`app-tab${tab === "gallery" ? " is-active" : ""}`}
-              onClick={() => setTab("gallery")}
-            >
-              Galerie
-            </button>
-          )}
-          {!isMarkitdown && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "tables"}
-              className={`app-tab${tab === "tables" ? " is-active" : ""}`}
-              onClick={() => setTab("tables")}
-            >
-              Tables{tables.length > 0 && <span className="app-tab-count">{tables.length}</span>}
-            </button>
-          )}
-        </div>
+        {!isRegistered ? (
+          <>
+            <div className="app-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "outline"}
+                className={`app-tab${tab === "outline" ? " is-active" : ""}`}
+                onClick={() => setTab("outline")}
+              >
+                Sommaire
+              </button>
+              {!isMarkitdown && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "gallery"}
+                  className={`app-tab${tab === "gallery" ? " is-active" : ""}`}
+                  onClick={() => setTab("gallery")}
+                >
+                  Galerie
+                </button>
+              )}
+              {!isMarkitdown && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "tables"}
+                  className={`app-tab${tab === "tables" ? " is-active" : ""}`}
+                  onClick={() => setTab("tables")}
+                >
+                  Tables{tables.length > 0 && <span className="app-tab-count">{tables.length}</span>}
+                </button>
+              )}
+            </div>
 
-        {tab === "outline" && (
-          <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
-        )}
-        {tab === "gallery" && (
-          <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} />
-        )}
-        {tab === "tables" && (
-          <TablesPanel tables={tables} onGotoPage={gotoPage} />
+            {tab === "outline" && (
+              <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
+            )}
+            {tab === "gallery" && (
+              <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} />
+            )}
+            {tab === "tables" && (
+              <TablesPanel tables={tables} onGotoPage={gotoPage} />
+            )}
+          </>
+        ) : (
+          <div className="sidebar-unprocessed-info" style={{ padding: "20px", margin: "20px 0", borderRadius: "var(--radius-md)", border: "1px solid rgba(255, 140, 0, 0.3)", background: "rgba(255, 140, 0, 0.05)" }}>
+            <h3 style={{ color: "#ff8c00", margin: "0 0 10px", fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "6px" }}>
+              ⚡ Document non traité
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.82rem", lineHeight: "1.45", color: "var(--text-secondary)" }}>
+              Ce document a été indexé par référence. Les fonctionnalités interactives (Sommaire, Reader, Galerie d'images, Extraction de tableaux) nécessitent une analyse complète.
+            </p>
+            <button
+              type="button"
+              className="library-btn library-btn-orange"
+              style={{ width: "100%", marginTop: "14px", height: "36px" }}
+              onClick={() => handleProcessRegistered(doc.doc_id)}
+            >
+              Lancer le traitement IA
+            </button>
+          </div>
         )}
         <footer className="app-sidebar-footer">
           Créé par <strong>MHDINGBI</strong> &amp; <strong>sadj-kun</strong>
@@ -944,15 +998,42 @@ function App() {
             </div>
           </div>
         ) : effectiveViewMode === "pdf" ? (
-          <Viewer
-            ref={viewerRef}
-            url={pdfUrl(doc.doc_id)}
-            pages={doc.pages}
-            figures={doc.figures}
-            searchQuery={query}
-            onPageChange={handlePageChange}
-            onFigureClick={setFigureIdx}
-          />
+          <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+            {doc.extraction_mode === "registered" && (
+              <div style={{ 
+                background: "rgba(255, 140, 0, 0.1)", 
+                borderBottom: "1px solid rgba(255, 140, 0, 0.2)", 
+                padding: "10px 20px", 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "space-between",
+                gap: "16px",
+                fontSize: "0.85rem",
+                zIndex: 10
+              }}>
+                <span style={{ color: "var(--text-primary)" }}>
+                  ⚡ <strong>Mode lecture seule :</strong> Lancez le traitement IA pour débloquer le Reader interactif, la Galerie des figures et l'extraction de tableaux.
+                </span>
+                <button
+                  type="button"
+                  className="library-btn library-btn-orange"
+                  style={{ height: "30px", padding: "0 12px", fontSize: "0.78rem" }}
+                  onClick={() => handleProcessRegistered(doc.doc_id)}
+                >
+                  Traiter le document
+                </button>
+              </div>
+            )}
+            <Viewer
+              ref={viewerRef}
+              url={pdfUrl(doc.doc_id)}
+              pages={doc.pages}
+              figures={doc.figures}
+              searchQuery={query}
+              onPageChange={handlePageChange}
+              onFigureClick={setFigureIdx}
+            />
+          </div>
         ) : (
           <MarkdownReader
             docId={doc.doc_id}

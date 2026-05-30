@@ -110,6 +110,43 @@ def error_html(message: str) -> str:
     return _page("Impossible de démarrer", spinner=False, error=safe)
 
 
+class Api:
+    def __init__(self):
+        self.window = None
+
+    def pick_files(self) -> list[str]:
+        import webview
+        if not self.window:
+            return []
+        try:
+            res = self.window.create_file_dialog(
+                dialog_type=webview.OPEN_DIALOG,
+                allow_multiple=True,
+                file_types=('PDF Files (*.pdf)', 'All files (*.*)')
+            )
+            return list(res) if res else []
+        except Exception as e:
+            print(f"[launcher] Error picking files: {e}")
+            return []
+
+    def pick_folder(self) -> str | None:
+        import webview
+        if not self.window:
+            return None
+        try:
+            res = self.window.create_file_dialog(
+                dialog_type=webview.FOLDER_DIALOG
+            )
+            if res:
+                if isinstance(res, (tuple, list)):
+                    return res[0] if len(res) > 0 else None
+                return str(res)
+            return None
+        except Exception as e:
+            print(f"[launcher] Error picking folder: {e}")
+            return None
+
+
 def main() -> None:
     import webview
 
@@ -127,8 +164,10 @@ def main() -> None:
     except Exception:
         pass
 
+    api = Api()
     window = webview.create_window("PDF Viewer", html=SPLASH_HTML,
-                                   width=1280, height=860)
+                                   width=1280, height=860, js_api=api)
+    api.window = window
     mgr = core.ServerManager(ROOT)
 
     def boot() -> None:
@@ -160,14 +199,20 @@ def main() -> None:
     # servers SYNCHRONOUSLY (finally) — a daemon thread on the 'closed' event
     # races process exit and can orphan uvicorn/node (invariant I-1).
     try:
-        webview.start(boot, gui="edgechromium")
+        if sys.platform == "win32":
+            webview.start(boot, gui="edgechromium")
+        else:
+            webview.start(boot)  # auto-detect: gtk on Linux, cocoa on macOS
     except Exception as exc:
-        _msgbox(
-            "Impossible d'ouvrir la fenêtre — le composant Microsoft WebView2 "
-            "semble manquant ou inutilisable.\n\n"
-            f"Détail : {exc}\n\n"
-            "Installez-le : https://developer.microsoft.com/microsoft-edge/webview2/"
-        )
+        if sys.platform == "win32":
+            _msgbox(
+                "Impossible d'ouvrir la fenêtre — le composant Microsoft WebView2 "
+                "semble manquant ou inutilisable.\n\n"
+                f"Détail : {exc}\n\n"
+                "Installez-le : https://developer.microsoft.com/microsoft-edge/webview2/"
+            )
+        else:
+            print(f"[error] Impossible d'ouvrir la fenêtre pywebview : {exc}", file=sys.stderr)
     finally:
         mgr.stop()
 

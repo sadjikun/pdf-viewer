@@ -82,12 +82,12 @@ def update_task_progress(doc_id: str, progress: int, message: str):
         if doc_id in active_tasks:
             active_tasks[doc_id].update({"progress": progress, "message": message})
 
-def run_pipeline_bg(doc_id: str, file_path: Path, ddir: Path, is_pdf: bool, original_filename: str, fast_mode: bool = False):
+def run_pipeline_bg(doc_id: str, file_path: Path, ddir: Path, is_pdf: bool, original_filename: str, fast_mode: bool = False, force_ocr: bool = False):
     from pipeline import convertir_pdf, convertir_generic
     try:
         cb = lambda p, m: update_task_progress(doc_id, p, m)
         if is_pdf:
-            result = convertir_pdf(file_path, ddir, progress_callback=cb, fast_mode=fast_mode)
+            result = convertir_pdf(file_path, ddir, progress_callback=cb, fast_mode=fast_mode, force_ocr=force_ocr)
         else:
             result = convertir_generic(file_path, ddir, progress_callback=cb)
 
@@ -295,6 +295,27 @@ def _load_result(doc_id: str) -> dict[str, Any]:
     return result
 
 
+def _resolve_source(doc_id: str) -> Path | None:
+    ddir = _doc_dir(doc_id)
+    # 1. source.pdf ou source.* présent dans le dossier cache
+    for pat in ("source.pdf", "source.*"):
+        candidates = sorted(ddir.glob(pat))
+        if candidates:
+            return candidates[0]
+    # 2. Fallback : source_path dans result.json
+    rp = ddir / "result.json"
+    if rp.exists():
+        try:
+            with open(rp, encoding="utf-8") as f:
+                result = json.load(f)
+            sp = result.get("source_path", "")
+            if sp:
+                return Path(sp)
+        except Exception:
+            pass
+    return None
+
+
 def _clean_title(title: str | None) -> str:
     if not title:
         return ""
@@ -302,8 +323,7 @@ def _clean_title(title: str | None) -> str:
 
 
 def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any]) -> dict[str, Any]:
-    source_files = sorted(ddir.glob("source.*"))
-    source = source_files[0] if source_files else None
+    source = _resolve_source(doc_id)
     result_file = ddir / "result.json"
     mtime = result_file.stat().st_mtime if result_file.exists() else ddir.stat().st_mtime
     filename = result.get("filename") or (source.name if source else doc_id)
@@ -677,10 +697,9 @@ def get_thumbnail(doc_id: str) -> FileResponse:
     thumb_path = ddir / "thumbnail.png"
 
     if not thumb_path.exists():
-        sources = sorted(ddir.glob("source.pdf"))
-        if not sources:
+        pdf_path = _resolve_source(doc_id)
+        if not pdf_path or not pdf_path.exists():
             raise HTTPException(404, "PDF source introuvable")
-        pdf_path = sources[0]
         try:
             with _PDFIUM_LOCK:
                 doc = pdfium.PdfDocument(str(pdf_path))
@@ -722,8 +741,8 @@ def get_raw(doc_id: str) -> dict[str, Any]:
 @app.get("/doc/{doc_id}/pdf")
 def get_pdf(doc_id: str) -> FileResponse:
     ddir = _doc_dir(doc_id)
-    source = ddir / "source.pdf"
-    if not source.exists():
+    source = _resolve_source(doc_id)
+    if not source or not source.exists():
         raise HTTPException(404, "PDF source absent")
 
     # Stratégie PDF.js :
@@ -737,20 +756,25 @@ def get_pdf(doc_id: str) -> FileResponse:
         is_native = False
 
     cleaned = ddir / "cleaned.pdf"
+
+    # FIX-075 : si cleaned.pdf existe déjà (session précédente), le servir immédiatement.
+    # Avant ce fix, needs_clean restait False quand cleaned.exists() → FileResponse(source) servi
+    # alors que source contient des images JPEG2000 invisibles dans PDF.js.
+    if cleaned.exists():
+        return FileResponse(cleaned, media_type="application/pdf")
+
     needs_clean = not is_native  # toujours pour scannés
 
-    if is_native and not cleaned.exists():
-        # Vérifier JPEG2000 + ICC profiles invalides (coûteux une seule fois, résultat mis en cache)
+    if is_native:
         if _needs_rasterize(source):
             needs_clean = True
-            print(f"[pdf] Probleme rendu detecte (JPEG2000 / ICC invalide) - rasterisation necessaire")
+            print("[pdf] Probleme rendu detecte (JPEG2000 / ICC invalide) - rasterisation necessaire")
 
     if needs_clean:
-        if not cleaned.exists():
-            try:
-                _repair_icc_profiles(source, cleaned)
-            except Exception as e:
-                print(f"[pdf] ICC repair skipped: {e}")
+        try:
+            _repair_icc_profiles(source, cleaned)
+        except Exception as e:
+            print(f"[pdf] ICC repair skipped: {e}")
         if cleaned.exists():
             return FileResponse(cleaned, media_type="application/pdf")
 
@@ -799,8 +823,8 @@ def get_markdown(doc_id: str) -> FileResponse:
     if md_path.exists():
         return FileResponse(md_path, media_type="text/markdown", filename=f"{doc_id}.md")
 
-    pdf_path = ddir / "source.pdf"
-    if not pdf_path.exists():
+    pdf_path = _resolve_source(doc_id)
+    if not pdf_path or not pdf_path.exists():
         raise HTTPException(404, "Document inconnu")
 
     from pipeline import _converter, _clean_markdown
@@ -829,8 +853,8 @@ def get_searchable_pdf(doc_id: str) -> FileResponse:
     from pipeline import TESSERACT_CMD  # import différé pour éviter l'init au boot
 
     ddir = _doc_dir(doc_id)
-    source = ddir / "source.pdf"
-    if not source.exists():
+    source = _resolve_source(doc_id)
+    if not source or not source.exists():
         raise HTTPException(404, "Document inconnu")
 
     if not TESSERACT_CMD:
@@ -1089,11 +1113,12 @@ def cleanup_cache(max_age_days: int = 30) -> JSONResponse:
 
 
 @app.post("/doc/{doc_id}/reprocess")
-async def reprocess_doc(doc_id: str, background_tasks: BackgroundTasks, fast_mode: bool = False) -> JSONResponse:
+async def reprocess_doc(doc_id: str, background_tasks: BackgroundTasks, fast_mode: bool = False, force_ocr: bool = False) -> JSONResponse:
     """Supprime le cache d'un document et le retraite depuis le PDF source.
 
-    Utile quand le document a été extrait en mode 'fast' (sans figures/tables)
-    et qu'on veut relancer le pipeline complet.
+    fast_mode=true  : extraction rapide (pypdfium2 uniquement, pas de Docling).
+    force_ocr=true  : force Docling+OCR même si le PDF est détecté comme natif.
+                      Utile pour les PDFs hybrides (corps natif + pièces jointes scannées).
     """
     ddir = _doc_dir(doc_id)
     sources = list(ddir.glob("source.*"))
@@ -1134,13 +1159,13 @@ async def reprocess_doc(doc_id: str, background_tasks: BackgroundTasks, fast_mod
         }
 
     # Lancer le pipeline en arrière-plan
-    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, is_pdf, source.name, fast_mode)
+    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, is_pdf, source.name, fast_mode, force_ocr)
 
     return JSONResponse({
         "doc_id": doc_id,
         "status": "processing",
         "progress": 0,
-        "message": "Retraitement ajouté à la file d'attente..."
+        "message": "Retraitement OCR ajouté à la file d'attente..." if force_ocr else "Retraitement ajouté à la file d'attente..."
     })
 
 
@@ -1187,6 +1212,188 @@ def get_status(doc_id: str) -> JSONResponse:
 
     # 4. Inconnu
     return JSONResponse({"status": "not_found"})
+
+
+def _register_pdf(source_path: Path) -> str:
+    from pipeline import _PDFIUM_LOCK
+    import pypdfium2 as pdfium
+
+    if not source_path.exists() or not source_path.is_file():
+        raise FileNotFoundError("Fichier introuvable")
+
+    doc_id = _sanitize_doc_id(source_path.name)
+    ddir = _doc_dir(doc_id)
+    ddir.mkdir(parents=True, exist_ok=True)
+
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(source_path))
+        try:
+            n_pages = len(doc)
+            title = _clean_title(doc.get_metadata_value("Title"))
+
+            pages_info = []
+            for i in range(n_pages):
+                try:
+                    p = doc[i]
+                    w, h = p.get_size()
+                    pages_info.append({"number": i + 1, "width": w, "height": h})
+                except Exception:
+                    pages_info.append({"number": i + 1, "width": 595.0, "height": 842.0})
+
+            thumb_path = ddir / "thumbnail.png"
+            if not thumb_path.exists():
+                try:
+                    page = doc[0]
+                    bitmap = page.render(scale=0.35)
+                    img = bitmap.to_pil()
+                    img.save(str(thumb_path), "PNG", optimize=True)
+                except Exception as th_err:
+                    print(f"[register] Miniature error: {th_err}")
+        finally:
+            doc.close()
+
+    result = {
+        "doc_id": doc_id,
+        "filename": source_path.name,
+        "source_path": str(source_path.resolve()),
+        "extraction_mode": "registered",
+        "pipeline_version": "registered",
+        "needs_reprocess": True,
+        "n_pages": n_pages,
+        "pdf_title": title,
+        "outline": [],
+        "figures": [],
+        "tables": [],
+        "pages": pages_info
+    }
+
+    with open(ddir / "result.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+
+    return doc_id
+
+
+@app.post("/register")
+def register(body: dict) -> JSONResponse:
+    path_str = body.get("path", "")
+    if not path_str:
+        raise HTTPException(400, "Chemin manquant")
+
+    path = Path(path_str)
+    if not path.exists():
+        return JSONResponse({
+            "registered": [],
+            "skipped": [],
+            "errors": [{"path": path_str, "reason": "not_found"}]
+        })
+
+    registered = []
+    skipped = []
+    errors = []
+
+    if path.is_file():
+        if path.suffix.lower() != ".pdf":
+            return JSONResponse({
+                "registered": [],
+                "skipped": [],
+                "errors": [{"path": path_str, "reason": "invalid_extension"}]
+            })
+        try:
+            doc_id = _sanitize_doc_id(path.name)
+            ddir = _doc_dir(doc_id)
+            if (ddir / "result.json").exists():
+                skipped.append({"path": path_str, "reason": "already_registered"})
+            else:
+                _register_pdf(path)
+                registered.append(doc_id)
+        except Exception as e:
+            errors.append({"path": path_str, "reason": str(e)})
+    elif path.is_dir():
+        for f in path.glob("*.pdf"):
+            if not f.is_file() or f.name.startswith("."):
+                continue
+            try:
+                doc_id = _sanitize_doc_id(f.name)
+                ddir = _doc_dir(doc_id)
+                if (ddir / "result.json").exists():
+                    skipped.append({"path": str(f), "reason": "already_registered"})
+                else:
+                    _register_pdf(f)
+                    registered.append(doc_id)
+            except Exception as e:
+                errors.append({"path": str(f), "reason": str(e)})
+    else:
+        errors.append({"path": path_str, "reason": "invalid_type"})
+
+    return JSONResponse({
+        "registered": registered,
+        "skipped": skipped,
+        "errors": errors
+    })
+
+
+@app.get("/register/preview")
+def register_preview(path: str) -> JSONResponse:
+    if not path:
+        raise HTTPException(400, "Chemin manquant")
+    p = Path(path)
+    if not p.exists():
+        raise HTTPException(404, "Chemin introuvable")
+    if p.is_file():
+        if p.suffix.lower() == ".pdf":
+            return JSONResponse({"pdf_count": 1, "pdfs": [p.name]})
+        return JSONResponse({"pdf_count": 0, "pdfs": []})
+    elif p.is_dir():
+        pdfs = [f.name for f in p.glob("*.pdf") if f.is_file() and not f.name.startswith(".")]
+        return JSONResponse({"pdf_count": len(pdfs), "pdfs": pdfs})
+    else:
+        raise HTTPException(400, "Type de fichier invalide")
+
+
+@app.post("/doc/{doc_id}/process")
+def process_doc(doc_id: str, background_tasks: BackgroundTasks, fast_mode: bool = False) -> JSONResponse:
+    ddir = _doc_dir(doc_id)
+    source = _resolve_source(doc_id)
+    if source is None or not source.exists():
+        raise HTTPException(404, "Fichier source introuvable")
+
+    with tasks_lock:
+        is_processing = doc_id in active_tasks
+    if is_processing:
+        return JSONResponse({
+            "doc_id": doc_id,
+            "status": "processing",
+            "progress": active_tasks[doc_id]["progress"],
+            "message": active_tasks[doc_id]["message"]
+        })
+
+    local_source = ddir / f"source{source.suffix}"
+    if source.resolve() != local_source.resolve():
+        try:
+            shutil.copy2(str(source), str(local_source))
+            source = local_source
+        except Exception as e:
+            raise HTTPException(500, f"Impossible de copier le fichier source : {e}")
+
+    (ddir / "result.json").unlink(missing_ok=True)
+    (ddir / "error.json").unlink(missing_ok=True)
+
+    with tasks_lock:
+        active_tasks[doc_id] = {
+            "status": "processing",
+            "progress": 0,
+            "message": "Démarrage de l'analyse du document..."
+        }
+
+    is_pdf = source.suffix.lower() == ".pdf"
+    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, is_pdf, source.name, fast_mode)
+
+    return JSONResponse({
+        "doc_id": doc_id,
+        "status": "processing",
+        "progress": 0,
+        "message": "Traitement ajouté à la file d'attente..."
+    })
 
 
 # Serve frontend static files if the dist directory exists

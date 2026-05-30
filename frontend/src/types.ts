@@ -34,7 +34,7 @@ export interface Table {
   n_cols: number;
 }
 
-export type ExtractionMode = "native" | "docling" | "fast" | "markitdown";
+export type ExtractionMode = "native" | "docling" | "fast" | "markitdown" | "registered";
 
 export interface HtmlManifestEntry {
   start: number;
@@ -55,6 +55,7 @@ export interface DocResult {
   figures: Figure[];
   tables: Table[];
   extraction_mode: ExtractionMode;
+  source_path?: string;
 }
 
 export interface LibraryDocument {
@@ -71,6 +72,23 @@ export interface LibraryDocument {
   size_bytes: number | null;
   cover_figure_id: string | null;
   needs_reprocess: boolean;
+  source_path?: string;
+}
+
+export interface RegisterSkipped {
+  path: string;
+  reason: string;
+}
+
+export interface RegisterError {
+  path: string;
+  reason: string;
+}
+
+export interface RegisterResult {
+  registered: string[];
+  skipped: RegisterSkipped[];
+  errors: RegisterError[];
 }
 
 export interface LibraryTask {
