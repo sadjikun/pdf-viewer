@@ -3,6 +3,16 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title Installation de PDF Viewer
 
+set SILENT_MODE=0
+if "%1"=="/msi" set SILENT_MODE=1
+if "%1"=="/silent" set SILENT_MODE=1
+
+if "!SILENT_MODE!"=="1" (
+    set "TARGET_DIR=%~dp0"
+    if "!TARGET_DIR:~-1!"=="\" set "TARGET_DIR=!TARGET_DIR:~0,-1!"
+    goto :start_setup
+)
+
 echo.
 echo  ======================================================
 echo     Assistant d'installation de PDF Viewer
@@ -21,6 +31,8 @@ if /i not "!CONFIRM!"=="O" (
     pause
     exit /b 0
 )
+
+:start_setup
 
 REM ── 1. Detecter / Installer Python 3.13 ────────────────────────────────────
 echo.
@@ -43,6 +55,16 @@ if not errorlevel 1 (
 )
 
 :install_python_prompt
+if "!SILENT_MODE!"=="1" (
+    echo  [!!] Python 3.13 non trouve. Tentative d'installation automatique via winget...
+    winget install Python.Python.3.13 --exact --silent --accept-package-agreements --accept-source-agreements
+    if errorlevel 1 (
+        echo  [!!] L'installation automatique a echoue.
+        exit /b 1
+    )
+    echo  [OK] Python installe avec succes ! Relancez l'installation.
+    exit /b 0
+)
 echo  [!!] Python 3.13 non trouve sur votre systeme.
 echo  Voulez-vous installer automatiquement Python 3.13 via winget (recommande) ? (O/N)
 set /p INSTALL_PY="Votre choix : "
@@ -84,6 +106,10 @@ REM ── 2. Definir le dossier d'installation et copier les fichiers ───
 :copy_files
 echo.
 echo  --- Etape 2 : Copie des fichiers de l'application --------------------
+if "!SILENT_MODE!"=="1" (
+    echo  [OK] Mode MSI actif : fichiers deja installes par Windows Installer.
+    goto :setup_venv
+)
 set "TARGET_DIR=%LocalAppData%\Programs\PDF-Viewer"
 echo  Destination : !TARGET_DIR!
 
@@ -101,6 +127,7 @@ if errorlevel 8 (
 echo  [OK] Fichiers copies avec succes.
 
 REM ── 3. Creer le VENV et installer les dependances ─────────────────────────
+:setup_venv
 echo.
 echo  --- Etape 3 : Configuration de l'environnement Python ---------------
 cd /d "!TARGET_DIR!\backend"
@@ -148,6 +175,15 @@ echo  Creation du raccourci dans le Menu Demarrer...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $StartMenu = [System.IO.Path]::Combine([System.Environment]::GetFolderPath('Programs'), 'PDF Viewer.lnk'); $Shortcut = $WshShell.CreateShortcut($StartMenu); $Shortcut.TargetPath = '!SHORTCUT_TARGET!'; $Shortcut.WorkingDirectory = '!TARGET_DIR!'; $Shortcut.IconLocation = '!ICON_PATH!'; $Shortcut.Save()"
 
 echo  [OK] Raccourcis crees.
+
+if "!SILENT_MODE!"=="1" (
+    echo.
+    echo  ======================================================
+    echo     Installation par MSI terminee avec succes !
+    echo  ======================================================
+    endlocal
+    exit /b 0
+)
 
 REM ── 5. Fin ─────────────────────────────────────────────────────────────────
 echo.
