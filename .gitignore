@@ -17,6 +17,7 @@ npm-debug.log*
 
 # Cache backend (PDFs traités, peut être lourd et privé)
 backend/cache/
+BIBLIOTHEQUE/
 
 # Samples lourds (PDFs perso, gardés en local)
 samples/*.pdf

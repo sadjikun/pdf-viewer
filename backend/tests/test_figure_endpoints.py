@@ -12,7 +12,7 @@ ENDPOINTS = ["latex-ocr", "caption-figures"]
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_figure_endpoint_rejects_malformed_doc_id(client, endpoint):
-    res = client.post(f"/doc/not-a-valid-id/{endpoint}")
+    res = client.post(f"/doc/invalid\\path/{endpoint}")
     assert res.status_code == 400
 
 

@@ -40,9 +40,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 ROOT = Path(__file__).parent
-CACHE_DIR = ROOT / "cache"
+CACHE_DIR = (ROOT.parent / "BIBLIOTHEQUE").resolve()
 CACHE_DIR.mkdir(exist_ok=True)
-_DOC_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+
+def _sanitize_doc_id(filename: str) -> str:
+    # Retirer l'extension
+    stem = Path(filename).stem
+    # Remplacer les caractères spéciaux par des underscores
+    safe = re.sub(r"[^\w\-. ]", "_", stem).strip()
+    if not safe:
+        safe = "document"
+    return safe
+
+
+def _get_file_hash(path: Path) -> str:
+    if not path.exists():
+        return ""
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()[:16]
+    except Exception:
+        return ""
+
+
 _EMPTY_ANNOTATIONS = {"version": 1, "highlights": [], "notes": {}, "saved_at": 0}
 
 # TD-013 : version pipeline attendue. Doit rester synchronisée avec PIPELINE_VERSION dans pipeline.py.
@@ -247,7 +270,7 @@ def startup_cleanup():
 
 
 def _doc_dir(doc_id: str) -> Path:
-    if not _DOC_ID_RE.fullmatch(doc_id):
+    if "/" in doc_id or "\\" in doc_id or ".." in doc_id:
         raise HTTPException(400, "Identifiant document invalide")
     p = (CACHE_DIR / doc_id).resolve()
     try:
@@ -355,7 +378,7 @@ def get_library() -> JSONResponse:
     failed: list[dict[str, Any]] = []
 
     for item in CACHE_DIR.iterdir():
-        if not item.is_dir() or not _DOC_ID_RE.fullmatch(item.name):
+        if not item.is_dir() or item.name.startswith("."):
             continue
         result_path = item / "result.json"
         error_path = item / "error.json"
@@ -416,11 +439,20 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if is_pdf and not data.startswith(b"%PDF"):
         raise HTTPException(400, "Entête %PDF absent — fichier invalide")
 
-    doc_id = _hash_bytes(data)
+    doc_id = _sanitize_doc_id(file.filename)
     ddir = _doc_dir(doc_id)
 
     # 1. Déjà traité et en cache ?
+    is_cached = False
     if (ddir / "result.json").exists():
+        # Vérifier si le fichier correspond au fichier en cache
+        source_files = list(ddir.glob("source.*"))
+        if source_files:
+            cached_hash = _get_file_hash(source_files[0])
+            if cached_hash == _hash_bytes(data):
+                is_cached = True
+
+    if is_cached:
         with open(ddir / "result.json", encoding="utf-8") as f:
             cached = json.load(f)
         # Patch filename: always prefer the actual upload name over the cached
@@ -445,8 +477,9 @@ async def process(background_tasks: BackgroundTasks, file: UploadFile = File(...
             "message": active_tasks[doc_id]["message"]
         })
 
-    # 3. Supprimer d'anciennes erreurs de traitement s'il y en a
-    (ddir / "error.json").unlink(missing_ok=True)
+    # 3. Supprimer d'anciennes erreurs de traitement s'il y en a et recréer le dossier propre
+    if ddir.exists():
+        shutil.rmtree(ddir, ignore_errors=True)
     ddir.mkdir(parents=True, exist_ok=True)
 
     # Conserver le nom de l'extension d'origine pour markitdown
@@ -1063,10 +1096,11 @@ async def reprocess_doc(doc_id: str, background_tasks: BackgroundTasks, fast_mod
     et qu'on veut relancer le pipeline complet.
     """
     ddir = _doc_dir(doc_id)
-    source = ddir / "source.pdf"
-
-    if not source.exists():
-        raise HTTPException(404, "PDF source introuvable — impossible de retraiter")
+    sources = list(ddir.glob("source.*"))
+    if not sources:
+        raise HTTPException(404, "Fichier source introuvable — impossible de retraiter")
+    source = sources[0]
+    is_pdf = source.suffix.lower() == ".pdf"
 
     # Détecter si déjà en cours de traitement
     with tasks_lock:
@@ -1100,7 +1134,7 @@ async def reprocess_doc(doc_id: str, background_tasks: BackgroundTasks, fast_mod
         }
 
     # Lancer le pipeline en arrière-plan
-    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, True, "source.pdf", fast_mode)
+    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, is_pdf, source.name, fast_mode)
 
     return JSONResponse({
         "doc_id": doc_id,
