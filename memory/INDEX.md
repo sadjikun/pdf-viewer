@@ -48,7 +48,7 @@ Flux **ÉCRITURE** : mettre à jour page → INDEX.md (si nouvelle) → LOG.md
 
 | Fichier | Statut |
 |---------|--------|
-| `../FIXES.md` | SUPERSEDED → lire `fixes-registry.md` |
-| `../BACKLOG.md` | Tracker vivant → vue résumée dans `phases.md` |
-| `../IMPLEMENTATION.md` | ARCHIVE — journal historique, ne pas modifier |
-| `../gemini_implementation.md` | EXPÉRIMENTAL pix2tex — état actuel dans `formulas.md` |
+| [FIXES.md](../docs/archive/FIXES.md) | SUPERSEDED → lire `fixes-registry.md` |
+| [BACKLOG.md](../docs/archive/BACKLOG.md) | Tracker vivant → vue résumée dans `phases.md` |
+| [IMPLEMENTATION.md](../docs/archive/IMPLEMENTATION.md) | ARCHIVE — journal historique, ne pas modifier |
+| [gemini_implementation.md](../docs/archive/gemini_implementation.md) | EXPÉRIMENTAL pix2tex — état actuel dans `formulas.md` |

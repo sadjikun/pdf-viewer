@@ -3,6 +3,14 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-30 — Nettoie et réorganise les dossiers et scripts du projet
+**Fichiers modifiés :** `docs/` (réorganisé), `scripts/` (nouveau), `setup_dev.bat` (renommé depuis `install.bat`), `.gitignore`, `build.bat`, `build_installer.py`, `launcher.bat`, `launcher_core.py`, `README.md`, `CHANGELOG.md`, `memory/INDEX.md`
+**Résumé :** Réorganisation de la racine du projet en déplaçant les fichiers de spécification et d'historique obsolètes dans `docs/archive/` and `docs/`. Renommage de `install.bat` en `setup_dev.bat` pour le distinguer de `setup.bat` (installateur end-user). Déplacement des scripts utilitaires dans `scripts/` et mise à jour de toutes les références pour un espace de travail propre.
+**Fixes introduits :** aucun
+**Points ouverts :** aucun
+
+---
+
 ### 2026-05-29 — Launcher fenêtre pywebview + chooser de mode (D1)
 **Fichiers modifiés :** `launcher.py`, `launcher_core.py` (nouveau), `make_icon.py` (nouveau), `assets/app.ico` (nouveau), `assets/MicrosoftEdgeWebview2Setup.exe` (nouveau), `build.bat`, `backend/requirements.txt`, `frontend/src/components/ModeChooser/*` (nouveau), `frontend/src/App.tsx`, `tests/launcher/*` (nouveau), `start.bat`+`start-ai.bat` (supprimés), `README.md`, wiki `memory/`
 **Résumé :** Remplacement du launcher systray (pystray) par une fenêtre de bureau pywebview : double-clic → splash (icône livre) → démarrage auto backend+frontend → chargement de l'app ; fermer la fenêtre arrête les deux serveurs (window-only). L'app accueille par un `ModeChooser` Standard/IA à chaque lancement (dernier choix présélectionné, `setAppMode`). Icône launcher/exe/fenêtre = favicon livre (`assets/app.ico`). Runtime WebView2 bundlé (auto-install au 1er lancement). Logique serveur extraite et testée dans `launcher_core.py` (11 tests).

@@ -41,7 +41,6 @@ Source: "launcher.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launcher.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launcher.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "launcher_core.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "install.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "setup.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -56,7 +55,7 @@ Name: "{userdesktop}\\PDF Viewer"; Filename: "{app}\\launcher.exe"; IconFilename
 
 [Run]
 ; Exécuter setup.bat en mode silencieux à la fin pour créer le venv et lancer pip install
-Filename: "cmd.exe"; Parameters: "/c ""{app}\setup.bat"" /msi"; StatusMsg: "Configuration de l'environnement Python et des dépendances (cette étape prend 1 à 2 minutes)..."; Flags: runhidden
+Filename: "cmd.exe"; Parameters: "/c ""{app}\\setup.bat"" /msi"; StatusMsg: "Configuration de l'environnement Python et des dépendances (cette étape prend 1 à 2 minutes)..."; Flags: runhidden
 
 ; Proposer de lancer l'application à la fin
 Filename: "{app}\\launcher.exe"; Description: "Lancer PDF Viewer maintenant"; Flags: nowait postinstall skipifsilent

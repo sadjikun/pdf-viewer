@@ -56,12 +56,12 @@ def write_env_local(root: Path, backend_port: int) -> None:
 def missing_prereqs(root: Path) -> list[str]:
     missing: list[str] = []
     if not (root / "backend" / ".venv" / "Scripts" / "python.exe").exists():
-        missing.append("backend/.venv (lance install.bat)")
+        missing.append("backend/.venv (lance setup.bat ou setup_dev.bat)")
     
     # Si le build de production existe, on n'a pas besoin de node_modules
     dist_exists = (root / "frontend" / "dist").exists()
     if not dist_exists and not (root / "frontend" / "node_modules").exists():
-        missing.append("frontend/node_modules (lance install.bat)")
+        missing.append("frontend/node_modules (lance setup_dev.bat)")
     return missing
 
 

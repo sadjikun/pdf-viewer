@@ -1,11 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title pdf-viewer - Installation
-
+title pdf-viewer - Installation Dev
 echo.
 echo  +--------------------------------------+
-echo  ^|       pdf-viewer  --  install        ^|
+echo  ^|      pdf-viewer  --  setup_dev       ^|
 echo  +--------------------------------------+
 echo.
 
@@ -39,7 +38,7 @@ if /i "!INSTALL_PY!"=="O" (
         pause
         exit /b 1
     )
-    echo  [OK] Python installe avec succes ! Veuillez fermer cette fenetre et relancer install.bat.
+    echo  [OK] Python installe avec succes ! Veuillez fermer cette fenetre et relancer setup_dev.bat.
     pause
     exit /b 0
 ) else (
@@ -77,7 +76,7 @@ if /i "!INSTALL_PY!"=="O" (
         pause
         exit /b 1
     )
-    echo  [OK] Python installe avec succes ! Veuillez fermer cette fenetre et relancer install.bat.
+    echo  [OK] Python installe avec succes ! Veuillez fermer cette fenetre et relancer setup_dev.bat.
     pause
     exit /b 0
 ) else (

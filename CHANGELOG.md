@@ -194,7 +194,7 @@ A sidebar tab that renders all tables extracted from the PDF as formatted HTML. 
 
 | File | Description |
 |------|-------------|
-| `install.bat` | One-click Windows setup: creates venv, installs backend and frontend deps |
+| `setup_dev.bat` | One-click Windows setup: creates venv, installs backend and frontend deps |
 | `start.bat` | Starts backend (uvicorn) and frontend (vite) in separate windows |
 | `AGENTS.md` | AI agent usage guide for this project |
 | `FIXES.md` | Running log of bugs fixed during development |

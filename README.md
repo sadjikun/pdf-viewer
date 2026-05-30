@@ -45,12 +45,12 @@ mkdir -p samples && curl -L -o samples/test.pdf https://arxiv.org/pdf/2510.04871
 
 Et drop `samples/test.pdf` dans la zone d'upload. ~25s de traitement la première fois (Docling + téléchargement modèles RapidOCR ~40 Mo), instantané ensuite via le cache.
 
-### Lancement rapide (Windows)
+### Installation et Lancement (Windows)
 
-Après une première installation, plus besoin de lancer les serveurs à la main :
-
-- **`install.bat`** — une seule fois : crée le venv Python + installe les dépendances (Python et npm).
-- **`launcher.exe`** — double-clic : ouvre l'application dans une **fenêtre de bureau** (pywebview). Un splash s'affiche pendant le démarrage des serveurs, puis l'app se charge et propose un choix **Standard** (extraction rapide) / **Mode IA** (Florence-2 + Texify). Fermer la fenêtre arrête tout.
+- **`pdf-viewer-setup.exe`** — l'installateur compilé (recommandé pour les utilisateurs) : installe l'application de manière propre et autonome.
+- **`setup.bat`** — l'assistant d'installation (pour les utilisateurs) : copie l'application dans `%LocalAppData%\Programs\PDF-Viewer`, crée l'environnement virtuel Python local, installe les dépendances et crée des raccourcis sur le Bureau et le Menu Démarrer.
+- **`setup_dev.bat`** — pour le développement : configure l'environnement virtuel dans `backend/.venv` et installe les packages `npm` du frontend.
+- **`launcher.exe`** — double-clic : ouvre l'application dans une **fenêtre de bureau** (pywebview). Un splash s'affiche pendant le démarrage des serveurs, puis l'app se charge. Fermer la fenêtre arrête tout.
 - **`launcher.bat`** — relance la fenêtre sans reconstruire l'exe (utile en dev).
 - **`build.bat`** — régénère `launcher.exe` après modification de `launcher.py`.
 

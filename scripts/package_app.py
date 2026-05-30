@@ -2,7 +2,7 @@ import os
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).parent.resolve()
+ROOT = Path(__file__).parent.parent.resolve()
 OUTPUT_ZIP = ROOT / "pdf-viewer-setup.zip"
 
 def package():
@@ -36,8 +36,8 @@ def package():
             rel_path = file_path.relative_to(ROOT)
             parts = rel_path.parts
             
-            # Exclusions de dossiers globaux (developpement / caches / tests)
-            if any(p in (".git", ".github", ".claude", ".pytest_cache", "__pycache__", "samples", "tests", "scratch", "memory") for p in parts):
+            # Exclusions de dossiers globaux (developpement / caches / tests / scripts)
+            if any(p in (".git", ".github", ".claude", ".pytest_cache", "__pycache__", "samples", "tests", "scratch", "memory", "scripts") for p in parts):
                 continue
                 
             # Exclusions spécifiques au Backend
@@ -69,7 +69,7 @@ def package():
     print("\nVous pouvez maintenant partager ce fichier ZIP avec vos collègues !")
     print("Pour l'installer sur une nouvelle machine :")
     print(" 1. Extraire le fichier ZIP.")
-    print(" 2. Lancer 'install.bat' (il configure le backend automatiquement,")
+    print(" 2. Lancer 'setup.bat' (il configure le backend automatiquement,")
     print("    et installera Python 3.13 via winget si manquant).")
     print(" 3. Lancer 'launcher.exe' (ou 'launcher.bat') pour démarrer l'application.")
     print(" Note : Node.js n'est plus requis pour exécuter cette version !")

@@ -10,7 +10,7 @@ echo  +--------------------------------------+
 echo.
 
 if not exist "backend\.venv\Scripts\activate.bat" (
-    echo  [!!] Venv Python absent. Lance install.bat d'abord.
+    echo  [!!] Venv Python absent. Lance setup_dev.bat d'abord.
     pause & exit /b 1
 )
 

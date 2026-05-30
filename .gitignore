@@ -41,6 +41,15 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+launcher.exe
+pdf-viewer-setup.exe
+
+# IDE / Protocols
+.clarity-protocol/
+
+# Scratchpad
+scratch/
+
 
 # Documentation interne projet (gardee en local, pas publiee sur GitHub)
 CLAUDE.md
