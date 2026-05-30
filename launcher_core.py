@@ -57,7 +57,10 @@ def missing_prereqs(root: Path) -> list[str]:
     missing: list[str] = []
     if not (root / "backend" / ".venv" / "Scripts" / "python.exe").exists():
         missing.append("backend/.venv (lance install.bat)")
-    if not (root / "frontend" / "node_modules").exists():
+    
+    # Si le build de production existe, on n'a pas besoin de node_modules
+    dist_exists = (root / "frontend" / "dist").exists()
+    if not dist_exists and not (root / "frontend" / "node_modules").exists():
         missing.append("frontend/node_modules (lance install.bat)")
     return missing
 
@@ -151,13 +154,25 @@ class ServerManager:
         if miss:
             self._emit_error("Prérequis manquants : " + " ; ".join(miss))
             return False
+        
         bp = pick_port(BACKEND_PORTS)
-        fp = pick_port(FRONTEND_PORTS)
-        if bp is None or fp is None:
-            self._emit_error("Aucun port libre (8000–8888 / 5442–5446).")
+        if bp is None:
+            self._emit_error("Aucun port libre pour le backend (8000–8888).")
             return False
-        self.backend_port, self.frontend_port = bp, fp
-        write_env_local(self.root, bp)
+        
+        dist_exists = (self.root / "frontend" / "dist").exists()
+        
+        if dist_exists:
+            self.backend_port = bp
+            self.frontend_port = bp
+            self._frontend_ready = True
+        else:
+            fp = pick_port(FRONTEND_PORTS)
+            if fp is None:
+                self._emit_error("Aucun port libre pour le frontend (5442–5446).")
+                return False
+            self.backend_port, self.frontend_port = bp, fp
+            write_env_local(self.root, bp)
 
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
@@ -172,18 +187,22 @@ class ServerManager:
             text=True, encoding="utf-8", errors="replace",
             creationflags=_CREATE_NO_WINDOW,
         )
-        npm = "npm.cmd" if sys.platform == "win32" else "npm"
-        self._frontend = subprocess.Popen(
-            [npm, "run", "dev", "--", "--port", str(fp), "--host", "127.0.0.1"],
-            cwd=self.root / "frontend", env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace",
-            creationflags=_CREATE_NO_WINDOW,
-        )
+        
         threading.Thread(target=self._watch, args=(self._backend, "backend"),
                          daemon=True).start()
-        threading.Thread(target=self._watch, args=(self._frontend, "frontend"),
-                         daemon=True).start()
+
+        if not dist_exists:
+            npm = "npm.cmd" if sys.platform == "win32" else "npm"
+            self._frontend = subprocess.Popen(
+                [npm, "run", "dev", "--", "--port", str(fp), "--host", "127.0.0.1"],
+                cwd=self.root / "frontend", env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
+                creationflags=_CREATE_NO_WINDOW,
+            )
+            threading.Thread(target=self._watch, args=(self._frontend, "frontend"),
+                             daemon=True).start()
+            
         return True
 
     def stop(self) -> None:

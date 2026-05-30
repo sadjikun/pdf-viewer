@@ -1153,3 +1153,10 @@ def get_status(doc_id: str) -> JSONResponse:
 
     # 4. Inconnu
     return JSONResponse({"status": "not_found"})
+
+
+# Serve frontend static files if the dist directory exists
+frontend_dist = ROOT.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
