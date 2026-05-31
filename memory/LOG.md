@@ -3,6 +3,22 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-31 — FIX-079 : sélection et copie de texte dans le Reader
+**Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/MarkdownReader.css`
+**Résumé :** Ajout d'un popover de sélection flottant qui apparaît dès que l'utilisateur sélectionne du texte dans le Reader (modes HTML et Markdown). Le popover contient un bouton "Copier" (copie dans le presse-papier via `navigator.clipboard` avec fallback `execCommand`) et, en mode HTML, un bouton "Surligner" qui applique le surlignage sans activer le mode `hlMode`. `handleMouseUp` est refactorisé : il montre toujours le popover, et n'applique le surlignage immédiat que si `hlMode` est actif. Les détails de sélection (texte, section, page, prefix/suffix) sont mis en cache dans `selectionCache` pour une utilisation différée par les boutons du popover.
+**Fixes introduits :** FIX-079 — popover copie/surlignage sur sélection de texte
+**Points ouverts :** aucun
+
+---
+
+### 2026-05-30 — FIX-078 : faux banner TOC + formules sans badge
+**Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `backend/pipeline.py`, `memory/fixes-registry.md`
+**Résumé :** (A) `_SECTION_NO_RE` dans FIX-046b remplacé par `/^\s*\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z]/` — exige majuscule+lettre après le numéro de section, élimine les faux positifs sur "4.6 M20", "8.8 M20", "600 mm". (B) `_maybe_strip` dans `_fix_toc_entries` corrigé : `\.{3,}` → `\.{3,}\s*\d*\s*$` pour que les ellipses académiques "(imperfections, ...)" ne soient plus taggées `toc-entry`. (C) `_convert_figure_formulas` : les candidats formules dont l'OCR échoue sont maintenant emballés dans `<div class="formula-not-decoded">` au lieu de rester comme `<figure>` muettes.
+**Fixes introduits :** FIX-078
+**Points ouverts :** Le document steel-base-plate-design_compress nécessite un retraitement pour que les correctifs B et C prennent effet (résultats mis en cache). Le correctif A (MarkdownReader.tsx) est immédiat sans retraitement.
+
+---
+
 ### 2026-05-30 — FIX-077 : force_ocr pour PDFs hybrides (corps natif + pièces scannées)
 **Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/App.css`
 **Résumé :** Les PDFs hybrides (natif + pièces jointes scannées) étaient classés "natif" entier → Docling tournait sans OCR → les pages scannées apparaissaient vides dans le Reader. Nouveau paramètre `force_ocr=True` dans `convertir_pdf` qui force `is_native=False` (Docling+OCR sur tout le doc). Propagé via `run_pipeline_bg` → `POST /doc/{id}/reprocess?force_ocr=true`. Frontend : split-button "Retraiter | OCR" dans la sidebar (bouton "OCR" en orange, tooltip explicatif).

@@ -13,6 +13,7 @@ import { useAppearance, type FontSize, type LineHeight } from "./hooks/useAppear
 import { useTts } from "./hooks/useTts";
 import { useImageLightbox } from "./hooks/useImageLightbox";
 import { useSearch } from "./hooks/useSearch";
+import { usePdfPageSync } from "./hooks/usePdfPageSync";
 import "./MarkdownReader.css";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/atom-one-dark.css";
@@ -1203,7 +1204,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   // FIX-026 : ref pour éviter la boucle infinie Reader → PDF → Reader lors des scrolls programmatiques.
   // scrollToSection/scrollToPage positionne ce flag à true ; le scroll handler ne propagera pas
   // onPageChange pendant la durée de l'animation (≈ 600 ms).
-  const isProgrammaticScrollRef = useRef(false);
+  // isProgrammaticScrollRef -> usePdfPageSync hook
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Appearance hook (zero coupling)
@@ -1235,6 +1236,21 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     setReaderImageIdx,
     readerImages,
   } = useImageLightbox(contentRef);
+
+  // PDF page sync hook (scroll handler, progress, breadcrumb, page counter)
+  const {
+    pdfPageNos, setPdfPageNos,
+    currentPdfPage,
+    progress,
+    showJumpTop, setShowJumpTop,
+    breadcrumb, setBreadcrumb,
+    activeSid, setActiveSid,
+    isProgrammaticScrollRef,
+    scrollToPage,
+    goPrevPage,
+    goNextPage,
+  } = usePdfPageSync({ contentRef, renderMode, compareMode, onPageChange, sections });
+
   
   const [md, setMd] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
@@ -1264,19 +1280,17 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   }, [appTheme]);
   const [focusSid, setFocusSid] = useState<string | null>(null);
   const [focusIdx, setFocusIdx] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [showJumpTop, setShowJumpTop] = useState(false);
+  // progress -> usePdfPageSync
+  // showJumpTop -> usePdfPageSync
   const [error, setError] = useState<string | null>(null);
   const [paperMeta, setPaperMeta] = useState<PaperMeta | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState<string>(() =>
-    cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document")
-  );
+  // breadcrumb -> usePdfPageSync
   const [showMiniToc, setShowMiniToc] = useState(false);
-  const [activeSid, setActiveSid] = useState<string | null>(null);
+  // activeSid -> usePdfPageSync
 
-  // ── PDF page navigation state (FIX-016) ─────────────────────────────────────
-  const [pdfPageNos, setPdfPageNos] = useState<number[]>([]);
-  const [currentPdfPage, setCurrentPdfPage] = useState<number>(1);
+  // pdfPageNos/currentPdfPage -> usePdfPageSync
+
+
 
   // ── Highlights & notes ────────────────────────────────────────────────────
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -1293,6 +1307,15 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   // ── Highlight popover ───────────────────────────────────────────────────────
   const [showHlPop, setShowHlPop] = useState(false);
   const [noteText, setNoteText] = useState("");
+
+  // ── Selection / copy popover ─────────────────────────────────────────────
+  const [showCopyPop, setShowCopyPop] = useState(false);
+  const [copyPopPos, setCopyPopPos] = useState<{ x: number; y: number } | null>(null);
+  const [copyPopDone, setCopyPopDone] = useState(false);
+  const [selectionCache, setSelectionCache] = useState<{
+    text: string; section: string; sectionTitle: string;
+    page: number; prefix: string; suffix: string;
+  } | null>(null);
 
   // ── Annotation persistence ────────────────────────────────────────────────
   const syncTimerRef = useRef<number | null>(null);
@@ -1498,48 +1521,101 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     return () => clearTimeout(timer);
   }, [visibleHtml, highlights, notes, renderMode]);
 
-  // Handle text selection highlighting
+  // Handle text selection — shows copy popover; auto-highlights if hlMode is on
   const handleMouseUp = () => {
-    if (!hlMode || renderMode !== "html") return;
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
+    if (!selection || selection.isCollapsed) {
+      setShowCopyPop(false);
+      return;
+    }
     const selectedText = selection.toString().trim();
-    if (!selectedText || selectedText.length < 2) return;
-
-    const docEl = contentRef.current?.querySelector(".reader-doc");
-    if (!docEl) return;
-
-    const range = selection.getRangeAt(0);
-    if (!docEl.contains(range.commonAncestorContainer)) return;
-    const { section, sectionTitle } = findSectionInfo(range.startContainer);
-    const page = findPageNo(docEl, range.startContainer);
-
-    // prefix/suffix for disambiguation (best-effort within start node).
-    const startText = (range.startContainer.textContent ?? "");
-    const prefix = startText.slice(Math.max(0, range.startOffset - 30), range.startOffset);
-    const endText = (range.endContainer.textContent ?? "");
-    const suffix = endText.slice(range.endOffset, range.endOffset + 30);
-
-    const key = `${section}::${shortHash(normForKey(selectedText))}`;
-
-    // Dedup by key.
-    if (highlights.some((h) => h.key === key)) {
-      selection.removeAllRanges();
+    if (!selectedText || selectedText.length < 2) {
+      setShowCopyPop(false);
       return;
     }
 
-    const newHl: Highlight = {
-      text: selectedText, color: hlColor, key,
-      section, sectionTitle, page, prefix, suffix,
-    };
-    const nextHls = [...highlights, newHl];
-    setHighlights(nextHls);
-    persistAll(nextHls, notes);
+    // Position the copy popover above the selection
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    setCopyPopPos({ x: rect.left + rect.width / 2, y: rect.top });
+    setCopyPopDone(false);
 
-    setActiveNoteKey(key);
-    setShowNotePanel(true);
-    setNoteText(notes[key] ?? "");
-    selection.removeAllRanges();
+    // Cache selection metadata for copy/highlight actions
+    let section = "", sectionTitle = "", page = 0, prefix = "", suffix = "";
+    if (renderMode === "html") {
+      const docEl = contentRef.current?.querySelector(".reader-doc");
+      if (docEl && docEl.contains(range.commonAncestorContainer)) {
+        const info = findSectionInfo(range.startContainer);
+        section = info.section;
+        sectionTitle = info.sectionTitle;
+        page = findPageNo(docEl, range.startContainer);
+        prefix = (range.startContainer.textContent ?? "").slice(
+          Math.max(0, range.startOffset - 30), range.startOffset,
+        );
+        suffix = (range.endContainer.textContent ?? "").slice(
+          range.endOffset, range.endOffset + 30,
+        );
+      }
+    }
+    setSelectionCache({ text: selectedText, section, sectionTitle, page, prefix, suffix });
+    setShowCopyPop(true);
+
+    // If highlight mode is active, immediately apply the highlight
+    if (hlMode && renderMode === "html") {
+      const key = `${section}::${shortHash(normForKey(selectedText))}`;
+      if (!highlights.some((h) => h.key === key)) {
+        const newHl: Highlight = {
+          text: selectedText, color: hlColor, key,
+          section, sectionTitle, page, prefix, suffix,
+        };
+        const nextHls = [...highlights, newHl];
+        setHighlights(nextHls);
+        persistAll(nextHls, notes);
+        setActiveNoteKey(key);
+        setShowNotePanel(true);
+        setNoteText(notes[key] ?? "");
+        selection.removeAllRanges();
+        setShowCopyPop(false);
+      }
+    }
+  };
+
+  const handleCopySelection = () => {
+    if (!selectionCache) return;
+    const text = selectionCache.text;
+    const finish = () => {
+      setCopyPopDone(true);
+      setTimeout(() => { setShowCopyPop(false); setCopyPopDone(false); }, 1000);
+    };
+    navigator.clipboard.writeText(text).then(finish).catch(() => {
+      // Fallback for http or restricted contexts
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(el);
+      el.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      document.body.removeChild(el);
+      finish();
+    });
+  };
+
+  const handleHighlightFromPop = () => {
+    if (!selectionCache || renderMode !== "html") return;
+    const { text, section, sectionTitle, page, prefix, suffix } = selectionCache;
+    const key = `${section}::${shortHash(normForKey(text))}`;
+    if (!highlights.some((h) => h.key === key)) {
+      const newHl: Highlight = { text, color: hlColor, key, section, sectionTitle, page, prefix, suffix };
+      const nextHls = [...highlights, newHl];
+      setHighlights(nextHls);
+      persistAll(nextHls, notes);
+      setActiveNoteKey(key);
+      setShowNotePanel(true);
+      setNoteText(notes[key] ?? "");
+    }
+    setShowCopyPop(false);
+    setSelectionCache(null);
+    window.getSelection()?.removeAllRanges();
   };
 
   // Event delegation to capture clicks on highlights
@@ -1573,6 +1649,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     }
 
     // Close popups if clicking elsewhere
+    setShowCopyPop(false);
     setShowTypoPop(false);
     setShowHlPop(false);
     setShowTtsPop(false);
@@ -1892,58 +1969,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     return () => clearTimeout(t);
   }, [htmlContent, focusSid]);
 
-  // ── Scroll events: progress + jump-to-top + breadcrumb ───────────────────
-
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-
-    const onScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const pct = scrollHeight <= clientHeight
-        ? 100
-        : (scrollTop / (scrollHeight - clientHeight)) * 100;
-      setProgress(Math.min(100, Math.round(pct)));
-      setShowJumpTop(scrollTop > 300);
-
-      // Update breadcrumb based on visible section
-      if (renderMode === "html") {
-        const secs = el.querySelectorAll<HTMLElement>("section[data-sid]");
-        for (let i = secs.length - 1; i >= 0; i--) {
-          const rect = secs[i].getBoundingClientRect();
-          if (rect.top <= 80) {
-            const heading = secs[i].querySelector("h1,h2,h3,h4");
-            if (heading?.textContent) {
-              setBreadcrumb(heading.textContent.trim());
-            }
-            setActiveSid(secs[i].getAttribute("data-sid"));
-            break;
-          }
-        }
-
-        // Update current PDF page based on visible page markers (FIX-016)
-        // FIX-026 : ne propagate onPageChange (→ PDF viewer) que si le scroll est utilisateur,
-        // pas programmatique (scrollToSection / scrollToPage positionne isProgrammaticScrollRef).
-        const markers = el.querySelectorAll<HTMLElement>(".pdf-page-marker[data-page]");
-        for (let i = markers.length - 1; i >= 0; i--) {
-          const rect = markers[i].getBoundingClientRect();
-          if (rect.top <= 120) {
-            const pg = parseInt(markers[i].getAttribute("data-page") ?? "0");
-            if (pg > 0) {
-              setCurrentPdfPage(pg);
-              if (!isProgrammaticScrollRef.current && onPageChange) {
-                onPageChange(pg);
-              }
-            }
-            break;
-          }
-        }
-      }
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [renderMode, onPageChange]);
-
+  // (scroll handler moved to usePdfPageSync)
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   // J/K: navigate sections in focus mode | F: toggle focus | Esc: close panels
   useEffect(() => {
@@ -1991,31 +2017,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     return () => window.removeEventListener("keydown", onKey);
   }, [readerImageIdx, showSearch, focusSid, focusIdx, sections, onFocusClear, renderMode]);
 
-  // ── PDF page navigation (FIX-016) ────────────────────────────────────────
-
-  const scrollToPage = (pageNo: number) => {
-    const el = contentRef.current;
-    if (!el) return;
-    const marker = el.querySelector<HTMLElement>(`.pdf-page-marker[data-page="${pageNo}"]`);
-    if (marker) {
-      // FIX-026 / FIX-037 : marquer comme programmatique → pas de boucle Reader → PDF
-      isProgrammaticScrollRef.current = true;
-      setTimeout(() => { isProgrammaticScrollRef.current = false; }, 1000);
-      marker.scrollIntoView({ behavior: "smooth", block: "start" });
-      setCurrentPdfPage(pageNo);
-    }
-  };
-
-  const goPrevPage = () => {
-    const idx = pdfPageNos.indexOf(currentPdfPage);
-    if (idx > 0) scrollToPage(pdfPageNos[idx - 1]);
-  };
-
-  const goNextPage = () => {
-    const idx = pdfPageNos.indexOf(currentPdfPage);
-    if (idx < pdfPageNos.length - 1) scrollToPage(pdfPageNos[idx + 1]);
-  };
-
+  // (page nav functions moved to usePdfPageSync)
   // ── Focus navigation ──────────────────────────────────────────────────────
 
   const goFocus = (idx: number) => {
@@ -2850,6 +2852,31 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
           )}
         </div>
       </div>
+
+      {/* Selection copy/highlight popover */}
+      {showCopyPop && copyPopPos && (
+        <div
+          className="reader-sel-pop"
+          style={{ left: copyPopPos.x, top: copyPopPos.y }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            className={`reader-sel-btn${copyPopDone ? " is-done" : ""}`}
+            onClick={handleCopySelection}
+          >
+            {copyPopDone ? "✓ Copié" : "Copier"}
+          </button>
+          {renderMode === "html" && (
+            <button
+              className="reader-sel-btn reader-sel-btn--hl"
+              style={{ borderLeftColor: hlColor }}
+              onClick={handleHighlightFromPop}
+            >
+              Surligner
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Notes / Annotation Panel */}
       {showNotePanel && activeNoteKey && (

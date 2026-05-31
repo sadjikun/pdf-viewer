@@ -1505,6 +1505,79 @@ export async function reprocessDoc(docId, fastMode?, forceOcr?) {
 
 ---
 
+### FIX-079 — Popover copie/surlignage sur sélection de texte
+**Fichiers :** `frontend/src/components/Reader/MarkdownReader.tsx` | `frontend/src/components/Reader/MarkdownReader.css`
+
+**Problème :** Le Reader ne permettait pas de sélectionner et copier du texte facilement. `handleMouseUp` ne faisait rien sans `hlMode` actif. Aucun retour visuel lors d'une sélection.
+
+**Fix :** `handleMouseUp` refactorisé pour toujours afficher un popover flottant (`reader-sel-pop`) dès qu'une sélection ≥ 2 caractères est faite — que `hlMode` soit actif ou non. Le popover contient :
+- **Copier** : copie via `navigator.clipboard.writeText()` + fallback `execCommand("copy")` pour les contextes http.
+- **Surligner** (HTML uniquement) : applique le surlignage depuis `selectionCache` sans nécessiter `hlMode`.
+
+Si `hlMode` est déjà actif, le surlignage est appliqué immédiatement dans `handleMouseUp` et le popover est supprimé.
+
+**Code clé :**
+```typescript
+// MarkdownReader.tsx — popover affiché sur toute sélection
+const handleMouseUp = () => {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) { setShowCopyPop(false); return; }
+  const selectedText = selection.toString().trim();
+  if (!selectedText || selectedText.length < 2) { setShowCopyPop(false); return; }
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  setCopyPopPos({ x: rect.left + rect.width / 2, y: rect.top });
+  setSelectionCache({ text: selectedText, section, sectionTitle, page, prefix, suffix });
+  setShowCopyPop(true);
+  // ... auto-highlight si hlMode actif
+};
+```
+```tsx
+// JSX — popover fixed, ancré sur la sélection
+<div className="reader-sel-pop" style={{ left: copyPopPos.x, top: copyPopPos.y }}
+     onMouseDown={(e) => e.preventDefault()}>
+  <button className="reader-sel-btn" onClick={handleCopySelection}>Copier</button>
+  {renderMode === "html" && (
+    <button className="reader-sel-btn reader-sel-btn--hl" onClick={handleHighlightFromPop}>Surligner</button>
+  )}
+</div>
+```
+**Invariant :** `onMouseDown={e.preventDefault()}` sur le popover est obligatoire — sans lui le clic efface la sélection avant l'exécution du handler.
+
+---
+
+### FIX-078 — Faux TOC en milieu de doc + formules sans badge
+**Fichiers :** `frontend/src/components/Reader/MarkdownReader.tsx` | `backend/pipeline.py` → `_fix_toc_entries`, `_convert_figure_formulas`
+
+**Problème A — `_SECTION_NO_RE` trop large :** `/^\s*\d+(?:\.\d+)*\.?(?:\s|$)/` matchait les valeurs d'ingénierie comme "4.6 M20" (classe de boulon), "8.8 M20", "600 mm". Ces faux positifs dans la première colonne d'une table de données faisaient croire à FIX-046b que c'était un sommaire → table supprimée, remplacée par le banner "↑ Table of contents available in sidebar".
+
+**Problème B — `_maybe_strip` et l'ellipse académique :** Le pattern `\.{3,}` détectait n'importe quel "..." dans un paragraphe (y compris "(imperfections, ...)") comme un point de conduite TOC → tag `toc-entry` incorrect.
+
+**Problème C — Formules non décodées silencieuses :** `_convert_figure_formulas` identifiait correctement les figures-formules mais, en cas d'échec OCR (pix2tex/texify), laissait le `<figure><img>` intact — pas de badge "Formula not decoded" → image muette dans le Reader.
+
+**Fixes :**
+1. `_SECTION_NO_RE` : `/^\s*\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z]/` — exige majuscule + lettre après l'espace. "4.6 M20" → 'M' puis '2' (pas une lettre) → NO MATCH. "2.1 Introduction" → 'In' → MATCH.
+2. `_maybe_strip` : `r'\.{3,}\s*\d*\s*$'` — les points doivent être EN FIN DE CHAÎNE (avant numéro de page optionnel). "(imperfections, ...)" → `...` pas en fin → NO MATCH.
+3. `_convert_figure_formulas` : candidates OCR en échec → emballés dans `<div class="formula-not-decoded"><img .../></div>` pour que le Reader affiche le badge.
+
+**Code clé :**
+```typescript
+// MarkdownReader.tsx — FIX-046b pattern corrigé
+const _SECTION_NO_RE = /^\s*\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z]/;
+```
+```python
+# pipeline.py — _maybe_strip condition corrigée
+if _re.search(r'\.{3,}\s*\d*\s*$|(?:[\s\.]{2,}\d+\s*$)', inner):
+```
+```python
+# pipeline.py — fallback formula-not-decoded
+failed_task_indices = {task_idx for task_idx, _ in tasks if task_idx not in replacements}
+for task_idx in failed_task_indices:
+    replacements[task_idx] = f'<div class="formula-not-decoded"><img {img_src}/></div>'
+```
+**Invariant :** `_SECTION_NO_RE` doit exiger `[A-Z][A-Za-z]` (2 chars dont majuscule) après le numéro — ne jamais revenir à `(?:\s|$)` ou `[A-Za-z]{2}` (matcherait "mm", "kN").
+
+---
+
 ## Ajouter un nouveau FIX
 
 Incrémenter depuis le dernier existant. Format :
