@@ -1237,21 +1237,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     readerImages,
   } = useImageLightbox(contentRef);
 
-  // PDF page sync hook (scroll handler, progress, breadcrumb, page counter)
-  const {
-    pdfPageNos, setPdfPageNos,
-    currentPdfPage,
-    progress,
-    showJumpTop, setShowJumpTop,
-    breadcrumb, setBreadcrumb,
-    activeSid, setActiveSid,
-    isProgrammaticScrollRef,
-    scrollToPage,
-    goPrevPage,
-    goNextPage,
-  } = usePdfPageSync({ contentRef, renderMode, compareMode, onPageChange, sections });
-
-  
   const [md, setMd] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [rawHtmlForDownload, setRawHtmlForDownload] = useState<string | null>(null);
@@ -1261,6 +1246,21 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   const [htmlAvailable, setHtmlAvailable] = useState(false);
   const [htmlTooLarge, setHtmlTooLarge] = useState(false);  // FIX-034 : HTML > seuil → markdown
   const [renderMode, setRenderMode] = useState<"html" | "md">("md");
+  // PDF page sync hook (scroll handler, progress, breadcrumb, page counter)
+  const {
+    pdfPageNos, setPdfPageNos,
+    currentPdfPage,
+    progress,
+    showJumpTop,
+    breadcrumb, setBreadcrumb,
+    activeSid, setActiveSid,
+    isProgrammaticScrollRef,
+    scrollToPage,
+    goPrevPage,
+    goNextPage,
+  } = usePdfPageSync({ contentRef, renderMode, compareMode, onPageChange, sections });
+
+  
   // isDark : synchronisé sur le prop global isDark, sinon local
   const darkThemes: AppTheme[] = ["oled", "forest"];
   const [localIsDark, setLocalIsDark] = useState(

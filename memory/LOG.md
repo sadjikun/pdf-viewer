@@ -3,6 +3,14 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-31 — Refactoring code quality : extraction de 6 hooks depuis MarkdownReader.tsx
+**Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/buildExportHtml.ts` (nouveau), `frontend/src/components/Reader/hooks/useAppearance.ts` (nouveau), `frontend/src/components/Reader/hooks/useTts.ts` (nouveau), `frontend/src/components/Reader/hooks/useImageLightbox.ts` (nouveau), `frontend/src/components/Reader/hooks/useSearch.ts` (nouveau), `frontend/src/components/Reader/hooks/usePdfPageSync.ts` (nouveau)
+**Résumé :** Extraction de 6 hooks personnalisés et 1 utilitaire depuis MarkdownReader.tsx (3 603 → ~2 700 lignes, 46 → ~23 useState). Phase 0 : `buildExportHtml.ts` extrait le téléchargement HTML standalone (~200 lignes). Phase 1 : `useAppearance` (8 state — typographie, zoom, popovers). Phase 2 : `useTts` (4 state — synthèse vocale). Phase 3 : `useImageLightbox` (2 state — lightbox images). Phase 4 : `useSearch` (4 state — recherche in-reader + sync sidebar). Phase 6 : `usePdfPageSync` (8 state — scroll handler, progress, breadcrumb, navigation pages PDF + anti-boucle FIX-026). Chaque extraction validée par `tsc -b && vite build` (0 erreur). `useAnnotations` (Phase 5) bloqué par dépendances circulaires — nécessite extraction préalable des utilitaires partagés (types Highlight, findSectionInfo, findPageNo, shortHash, normForKey).
+**Fixes introduits :** aucun (refactoring sans changement de comportement)
+**Points ouverts :** Phases 7 (`useFocusMode`), 8 (`useContentLoading`) restantes — self-contained. Phase 5 (`useAnnotations`) à débloquer. App.tsx hooks (Phases 9-14) non démarrés.
+
+---
+
 ### 2026-05-31 — FIX-079 : sélection et copie de texte dans le Reader
 **Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/MarkdownReader.css`
 **Résumé :** Ajout d'un popover de sélection flottant qui apparaît dès que l'utilisateur sélectionne du texte dans le Reader (modes HTML et Markdown). Le popover contient un bouton "Copier" (copie dans le presse-papier via `navigator.clipboard` avec fallback `execCommand`) et, en mode HTML, un bouton "Surligner" qui applique le surlignage sans activer le mode `hlMode`. `handleMouseUp` est refactorisé : il montre toujours le popover, et n'applique le surlignage immédiat que si `hlMode` est actif. Les détails de sélection (texte, section, page, prefix/suffix) sont mis en cache dans `selectionCache` pour une utilisation différée par les boutons du popover.
