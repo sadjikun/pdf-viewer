@@ -3,6 +3,79 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-05-31 — Refactoring code quality : extraction de 6 hooks depuis MarkdownReader.tsx
+**Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/buildExportHtml.ts` (nouveau), `frontend/src/components/Reader/hooks/useAppearance.ts` (nouveau), `frontend/src/components/Reader/hooks/useTts.ts` (nouveau), `frontend/src/components/Reader/hooks/useImageLightbox.ts` (nouveau), `frontend/src/components/Reader/hooks/useSearch.ts` (nouveau), `frontend/src/components/Reader/hooks/usePdfPageSync.ts` (nouveau)
+**Résumé :** Extraction de 6 hooks personnalisés et 1 utilitaire depuis MarkdownReader.tsx (3 603 → ~2 700 lignes, 46 → ~23 useState). Phase 0 : `buildExportHtml.ts` extrait le téléchargement HTML standalone (~200 lignes). Phase 1 : `useAppearance` (8 state — typographie, zoom, popovers). Phase 2 : `useTts` (4 state — synthèse vocale). Phase 3 : `useImageLightbox` (2 state — lightbox images). Phase 4 : `useSearch` (4 state — recherche in-reader + sync sidebar). Phase 6 : `usePdfPageSync` (8 state — scroll handler, progress, breadcrumb, navigation pages PDF + anti-boucle FIX-026). Chaque extraction validée par `tsc -b && vite build` (0 erreur). `useAnnotations` (Phase 5) bloqué par dépendances circulaires — nécessite extraction préalable des utilitaires partagés (types Highlight, findSectionInfo, findPageNo, shortHash, normForKey).
+**Fixes introduits :** aucun (refactoring sans changement de comportement)
+**Points ouverts :** Phases 7 (`useFocusMode`), 8 (`useContentLoading`) restantes — self-contained. Phase 5 (`useAnnotations`) à débloquer. App.tsx hooks (Phases 9-14) non démarrés.
+
+---
+
+### 2026-05-31 — FIX-079 : sélection et copie de texte dans le Reader
+**Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/MarkdownReader.css`
+**Résumé :** Ajout d'un popover de sélection flottant qui apparaît dès que l'utilisateur sélectionne du texte dans le Reader (modes HTML et Markdown). Le popover contient un bouton "Copier" (copie dans le presse-papier via `navigator.clipboard` avec fallback `execCommand`) et, en mode HTML, un bouton "Surligner" qui applique le surlignage sans activer le mode `hlMode`. `handleMouseUp` est refactorisé : il montre toujours le popover, et n'applique le surlignage immédiat que si `hlMode` est actif. Les détails de sélection (texte, section, page, prefix/suffix) sont mis en cache dans `selectionCache` pour une utilisation différée par les boutons du popover.
+**Fixes introduits :** FIX-079 — popover copie/surlignage sur sélection de texte
+**Points ouverts :** aucun
+
+---
+
+### 2026-05-30 — FIX-078 : faux banner TOC + formules sans badge
+**Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `backend/pipeline.py`, `memory/fixes-registry.md`
+**Résumé :** (A) `_SECTION_NO_RE` dans FIX-046b remplacé par `/^\s*\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z]/` — exige majuscule+lettre après le numéro de section, élimine les faux positifs sur "4.6 M20", "8.8 M20", "600 mm". (B) `_maybe_strip` dans `_fix_toc_entries` corrigé : `\.{3,}` → `\.{3,}\s*\d*\s*$` pour que les ellipses académiques "(imperfections, ...)" ne soient plus taggées `toc-entry`. (C) `_convert_figure_formulas` : les candidats formules dont l'OCR échoue sont maintenant emballés dans `<div class="formula-not-decoded">` au lieu de rester comme `<figure>` muettes.
+**Fixes introduits :** FIX-078
+**Points ouverts :** Le document steel-base-plate-design_compress nécessite un retraitement pour que les correctifs B et C prennent effet (résultats mis en cache). Le correctif A (MarkdownReader.tsx) est immédiat sans retraitement.
+
+---
+
+### 2026-05-30 — FIX-077 : force_ocr pour PDFs hybrides (corps natif + pièces scannées)
+**Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/App.css`
+**Résumé :** Les PDFs hybrides (natif + pièces jointes scannées) étaient classés "natif" entier → Docling tournait sans OCR → les pages scannées apparaissaient vides dans le Reader. Nouveau paramètre `force_ocr=True` dans `convertir_pdf` qui force `is_native=False` (Docling+OCR sur tout le doc). Propagé via `run_pipeline_bg` → `POST /doc/{id}/reprocess?force_ocr=true`. Frontend : split-button "Retraiter | OCR" dans la sidebar (bouton "OCR" en orange, tooltip explicatif).
+**Fixes introduits :** FIX-077 — force_ocr pour PDFs hybrides
+**Points ouverts :** Le retraitement OCR est plus lent (~5× vs natif). L'utilisateur doit cliquer "OCR" manuellement — pas de détection automatique des hybrides.
+
+---
+
+### 2026-05-30 — FIX-075, FIX-076 : images PDF viewer + hiérarchie outline N.0
+**Fichiers modifiés :** `backend/main.py`, `backend/pipeline.py`, `memory/fixes-registry.md`
+**Résumé :** (1) Régression `get_pdf` : quand `cleaned.pdf` existait déjà en cache, la logique `needs_clean` restait False → le PDF original (avec JPEG2000) était servi → images vides dans PDF.js. Fix : vérification anticipée `if cleaned.exists(): return FileResponse(cleaned)` (FIX-075). (2) Outline texte : les chapitres "N.0 TITRE" (ex. "1.0 INTRODUCTION") recevaient le niveau 2 comme les sous-sections "N.M", aplatissant toute la hiérarchie. Nouveau flag `has_x0_chapters` (détecte le style via `_X0_CHAPTER`), désactive `_TOP_CHAPTER_PREFIX` (évite les items de liste de spec comme L1), et assigne `level = max(1, dot_count)` pour "N.0" (FIX-076). Seuil longueur minimum abaissé de 10 à 5 pour capturer "GENERAL" et "CRITERIA".
+**Fixes introduits :** FIX-075 — cleaned.pdf servi si existant, FIX-076 — niveaux outline N.0 + suppression faux positifs
+**Points ouverts :** retraitement du document `anchor-bolt-design-guide_compress` requis pour que FIX-076 prenne effet (outline en cache non mis à jour). "2.2 GLOSSARY OF TERMS" reste absent car le titre n'apparaît pas dans le texte extrait par pypdfium2.
+
+---
+
+### 2026-05-30 — Nettoie et réorganise les dossiers et scripts du projet
+**Fichiers modifiés :** `docs/` (réorganisé), `scripts/` (nouveau), `setup_dev.bat` (renommé depuis `install.bat`), `.gitignore`, `build.bat`, `build_installer.py`, `launcher.bat`, `launcher_core.py`, `README.md`, `CHANGELOG.md`, `memory/INDEX.md`
+**Résumé :** Réorganisation de la racine du projet en déplaçant les fichiers de spécification et d'historique obsolètes dans `docs/archive/` and `docs/`. Renommage de `install.bat` en `setup_dev.bat` pour le distinguer de `setup.bat` (installateur end-user). Déplacement des scripts utilitaires dans `scripts/` et mise à jour de toutes les références pour un espace de travail propre.
+**Fixes introduits :** aucun
+**Points ouverts :** aucun
+
+---
+
+### 2026-05-29 — Launcher fenêtre pywebview + chooser de mode (D1)
+**Fichiers modifiés :** `launcher.py`, `launcher_core.py` (nouveau), `make_icon.py` (nouveau), `assets/app.ico` (nouveau), `assets/MicrosoftEdgeWebview2Setup.exe` (nouveau), `build.bat`, `backend/requirements.txt`, `frontend/src/components/ModeChooser/*` (nouveau), `frontend/src/App.tsx`, `tests/launcher/*` (nouveau), `start.bat`+`start-ai.bat` (supprimés), `README.md`, wiki `memory/`
+**Résumé :** Remplacement du launcher systray (pystray) par une fenêtre de bureau pywebview : double-clic → splash (icône livre) → démarrage auto backend+frontend → chargement de l'app ; fermer la fenêtre arrête les deux serveurs (window-only). L'app accueille par un `ModeChooser` Standard/IA à chaque lancement (dernier choix présélectionné, `setAppMode`). Icône launcher/exe/fenêtre = favicon livre (`assets/app.ico`). Runtime WebView2 bundlé (auto-install au 1er lancement). Logique serveur extraite et testée dans `launcher_core.py` (11 tests).
+**Fixes introduits :** aucun — ADR-007 (launcher pywebview window-only + WebView2 bundlé).
+**Suivi :** lancé + buildé avec succès (fenêtre + icône livre OK). Correctifs post-build : détection WebView2 sous `WOW6432Node` (faux négatif → bootstrapper inutile) + lancement non bloquant ; icône fenêtre via `WM_SETICON` + AppUserModelID (mode dev `python launcher.py`) ; chemins absolus `%~dp0` pour `--add-data`/`--icon` PyInstaller (`--specpath build` cassait la résolution relative). `start.bat`/`start-ai.bat` supprimés → `launcher.exe` = entrée unique (le choix Standard/IA vit dans le ModeChooser) ; `README.md` mis à jour.
+**Points ouverts :** packaging frontend statique servi par FastAPI (vrai standalone, D1d) non fait ; chemins WebView2-absent / prérequis-manquants à tester sur une machine fraîche.
+
+---
+
+### 2026-05-29 — Notes & surlignages durables (R11) + export fiche (R12)
+**Fichiers modifiés :** `backend/main.py`, `backend/fiche.py`, `backend/conftest.py`, `backend/tests/test_annotations.py`, `backend/tests/test_fiche.py`, `backend/requirements.txt`, `frontend/src/types.ts`, `frontend/src/api.ts`, `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/MarkdownReader.css`, wiki `memory/`, `CLAUDE.md`, `GEMINI.md`
+**Résumé :** Migration des annotations de `localStorage` vers un stockage serveur durable `cache/{doc}/annotations.json` (R11), avec restauration des surlignages section-scopée multi-nœuds (clés déterministes `{section}::{shortHash}`), sync Option B (localStorage primaire + sync serveur débouncé 1000 ms, I-B) et auto-migration au premier open. Ajout d'un panneau "Notes" listant les annotations groupées par section et d'un bouton "Fiche" exportant une fiche de révision HTML/Markdown (R12, `backend/fiche.py` + endpoint `/doc/{id}/fiche`). Harnais pytest introduit (`conftest.py` + 10 tests verts). Plan exécuté en subagent-driven-development ; revues ground-truth (diff + tsc) à chaque dispatch.
+**Fixes introduits :** FIX-072 (annotations durables serveur, invariants I-A/I-C/I-D), FIX-073 (restauration section-scopée multi-nœuds + garde-fou `backgroundColor`), FIX-074 (sync Option B + auto-migration, I-B).
+**Points ouverts :** vérification manuelle navigateur à faire par l'utilisateur (surligner → vider `localStorage` → recharger → le surlignage et la note réapparaissent depuis le serveur). Revue finale (opus) : XSS stocké dans l'export fiche **corrigé** (échappement du champ `color`) + couleurs hex désormais honorées + `page` coercé en int (commit `4dda1c1`, +2 tests). Bug pré-existant hors-scope repéré : `_valid_doc_id` indéfini dans `/latex-ocr` et `/caption-figures` (`main.py:909/955`) → `NameError` à l'appel ; tâche séparée à traiter.
+
+---
+
+### 2026-05-27 — Florence-2 : correctifs compatibilité transformers 5.x
+**Fichiers modifiés :** `backend/pipeline.py`, `~/.cache/huggingface/modules/transformers_modules/microsoft/Florence_hyphen_2_hyphen_base/.../configuration_florence2.py`
+**Résumé :** Florence-2-base est incompatible avec transformers 5.x sur deux points : (1) `configuration_florence2.py` accède à `self.forced_bos_token_id` directement alors que 5.x le supprime de `__getattribute__` → corrigé via `getattr(self, "forced_bos_token_id", None)` dans le fichier cache; (2) `Florence2ForConditionalGeneration` ne définit pas `_supports_sdpa` attendu par le dispatcher SDPA de 5.x → corrigé en passant `attn_implementation="eager"` à `from_pretrained`. Florence-2 OK confirmé.
+**Fixes introduits :** aucun (comportements déjà couverts par FIX-044)
+**Points ouverts :** le patch `configuration_florence2.py` est dans le cache HF local (~/.cache/huggingface/modules/) — si le cache est supprimé, le patch est perdu et doit être réappliqué.
+
+---
+
 ### 2026-05-27 — Texify : moteur LaTeX-OCR unifié (remplace pix2tex en moteur primaire)
 **Fichiers modifiés :** `backend/pipeline.py`, `backend/main.py`, `backend/requirements.txt`, `memory/formulas.md`
 **Résumé :** Intégration de Texify (VikParuchuri) comme moteur LaTeX-OCR primaire. Nouvelle abstraction `_latex_ocr_batch(imgs)` + `_resolve_engine()` qui dispatche vers Texify (batch, ~500 MB) ou pix2tex (fallback). Toutes les call-sites (harvest Docling, _convert_figure_formulas, _latex_ocr_figure, endpoint /latex-ocr) utilisent désormais les fonctions unifiées. Texify bénéficie d'une inférence batch native au lieu de ThreadPoolExecutor. Variable `FORMULA_ENGINE` (auto/texify/pix2tex).
