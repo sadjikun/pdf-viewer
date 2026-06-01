@@ -1,4 +1,4 @@
-import type { DocResult, DocStatus, LibraryResponse, ProcessingResponse } from "./types";
+import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse } from "./types";
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -83,4 +83,28 @@ export function htmlManifestUrl(docId: string): string {
 
 export function htmlPartUrl(docId: string, startPage: number): string {
   return `${API_BASE}/doc/${docId}/html-part/${startPage}`;
+}
+
+// Annotations (highlights + notes, persistées côté serveur)
+export async function getAnnotations(docId: string): Promise<AnnotationStore> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/annotations`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function saveAnnotations(
+  docId: string,
+  store: AnnotationStore,
+): Promise<{ ok: boolean; saved_at: number }> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/annotations`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(store),
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export function ficheUrl(docId: string, format: "html" | "md"): string {
+  return `${API_BASE}/doc/${docId}/fiche?format=${format}`;
 }
