@@ -104,3 +104,21 @@ export interface LibraryResponse {
   failed: LibraryFailure[];
   total: number;
 }
+
+export interface StoredHighlight {
+  key: string;
+  color: string;
+  text: string;
+  section: string;
+  sectionTitle: string;
+  page: number;
+  prefix?: string;
+  suffix?: string;
+}
+
+export interface AnnotationStore {
+  version: number;
+  highlights: StoredHighlight[];
+  notes: Record<string, string>;
+  saved_at: number;
+}

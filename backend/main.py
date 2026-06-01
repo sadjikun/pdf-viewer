@@ -20,13 +20,14 @@ import os
 import re
 import shutil
 import threading
+import time
 import traceback
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ CACHE_DIR.mkdir(exist_ok=True)
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 Mo
 DOC_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+_EMPTY_ANNOTATIONS: dict[str, Any] = {"version": 1, "highlights": [], "notes": {}, "saved_at": 0}
 FIG_ID_RE = re.compile(r"^f_\d+$")
 
 # État des traitements en cours, indexé par doc_id. Protégé par tasks_lock.
@@ -394,6 +396,91 @@ def delete_doc(doc_id: str) -> dict[str, str]:
     if p.exists():
         shutil.rmtree(p)
     return {"status": "deleted", "doc_id": doc_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Annotations + fiche export
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/doc/{doc_id}/annotations")
+def get_annotations(doc_id: str) -> JSONResponse:
+    """Retourne les annotations (highlights + notes) du document."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    path = ddir / "annotations.json"
+    if not path.exists():
+        return JSONResponse(dict(_EMPTY_ANNOTATIONS))
+    try:
+        return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError):
+        return JSONResponse(dict(_EMPTY_ANNOTATIONS))
+
+
+@app.put("/doc/{doc_id}/annotations")
+def put_annotations(doc_id: str, body: dict) -> dict[str, Any]:
+    """Sauvegarde les annotations (highlights + notes). Écriture atomique."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    highlights = body.get("highlights", [])
+    notes = body.get("notes", {})
+    if not isinstance(highlights, list) or not isinstance(notes, dict):
+        raise HTTPException(422, "Format annotations invalide")
+    valid_keys = {h.get("key") for h in highlights if isinstance(h, dict)}
+    notes = {k: v for k, v in notes.items() if k in valid_keys}
+    store = {
+        "version": 1,
+        "highlights": highlights,
+        "notes": notes,
+        "saved_at": int(time.time() * 1000),
+    }
+    path = ddir / "annotations.json"
+    _write_json_atomic(path, store)
+    return {"ok": True, "saved_at": store["saved_at"]}
+
+
+@app.get("/doc/{doc_id}/fiche")
+def get_fiche(doc_id: str, format: str = "html") -> Response:
+    """Exporte une fiche de révision (HTML ou Markdown) depuis les annotations."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    if format not in ("html", "md"):
+        raise HTTPException(400, "format doit être html ou md")
+    try:
+        result_path = ddir / "result.json"
+        if result_path.exists():
+            with open(result_path, encoding="utf-8") as f:
+                result = json.load(f)
+            title = _clean_title(result.get("title") or result.get("filename") or doc_id)
+        else:
+            title = doc_id
+    except (OSError, json.JSONDecodeError):
+        title = doc_id
+    path = ddir / "annotations.json"
+    if path.exists():
+        try:
+            store = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            store = dict(_EMPTY_ANNOTATIONS)
+    else:
+        store = dict(_EMPTY_ANNOTATIONS)
+    from fiche import render_html, render_markdown
+    safe = re.sub(r"[^\w\-]+", "_", title).strip("_") or "fiche"
+    if format == "md":
+        content = render_markdown(title, store)
+        media = "text/markdown; charset=utf-8"
+        fname = f"{safe}.md"
+    else:
+        content = render_html(title, store)
+        media = "text/html; charset=utf-8"
+        fname = f"{safe}.html"
+    return Response(
+        content=content,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
