@@ -821,51 +821,55 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
+    let rafId = 0;
 
     const onScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const pct = scrollHeight <= clientHeight
-        ? 100
-        : (scrollTop / (scrollHeight - clientHeight)) * 100;
-      setProgress(Math.min(100, Math.round(pct)));
-      setShowJumpTop(scrollTop > 300);
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        const pct = scrollHeight <= clientHeight
+          ? 100
+          : (scrollTop / (scrollHeight - clientHeight)) * 100;
+        setProgress(Math.min(100, Math.round(pct)));
+        setShowJumpTop(scrollTop > 300);
 
-      // Update breadcrumb based on visible section
-      if (renderMode === "html") {
-        const secs = el.querySelectorAll<HTMLElement>("section[data-sid]");
-        for (let i = secs.length - 1; i >= 0; i--) {
-          const rect = secs[i].getBoundingClientRect();
-          if (rect.top <= 80) {
-            const heading = secs[i].querySelector("h1,h2,h3,h4");
-            if (heading?.textContent) {
-              setBreadcrumb(heading.textContent.trim());
-            }
-            setActiveSid(secs[i].getAttribute("data-sid"));
-            break;
-          }
-        }
-
-        // Update current PDF page based on visible page markers (FIX-016)
-        // FIX-026 : ne propagate onPageChange (→ PDF viewer) que si le scroll est utilisateur,
-        // pas programmatique (scrollToSection / scrollToPage positionne isProgrammaticScrollRef).
-        const markers = el.querySelectorAll<HTMLElement>(".pdf-page-marker[data-page]");
-        for (let i = markers.length - 1; i >= 0; i--) {
-          const rect = markers[i].getBoundingClientRect();
-          if (rect.top <= 120) {
-            const pg = parseInt(markers[i].getAttribute("data-page") ?? "0");
-            if (pg > 0) {
-              setCurrentPdfPage(pg);
-              if (!isProgrammaticScrollRef.current && onPageChange) {
-                onPageChange(pg);
+        if (renderMode === "html") {
+          const secs = el.querySelectorAll<HTMLElement>("section[data-sid]");
+          for (let i = secs.length - 1; i >= 0; i--) {
+            const rect = secs[i].getBoundingClientRect();
+            if (rect.top <= 80) {
+              const heading = secs[i].querySelector("h1,h2,h3,h4");
+              if (heading?.textContent) {
+                setBreadcrumb(heading.textContent.trim());
               }
+              setActiveSid(secs[i].getAttribute("data-sid"));
+              break;
             }
-            break;
+          }
+
+          const markers = el.querySelectorAll<HTMLElement>(".pdf-page-marker[data-page]");
+          for (let i = markers.length - 1; i >= 0; i--) {
+            const rect = markers[i].getBoundingClientRect();
+            if (rect.top <= 120) {
+              const pg = parseInt(markers[i].getAttribute("data-page") ?? "0");
+              if (pg > 0) {
+                setCurrentPdfPage(pg);
+                if (!isProgrammaticScrollRef.current && onPageChange) {
+                  onPageChange(pg);
+                }
+              }
+              break;
+            }
           }
         }
-      }
+      });
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(rafId);
+    };
   }, [renderMode, onPageChange]);
 
   // Collect all images in the current reader view

@@ -104,8 +104,11 @@ function App() {
   const viewerRef = useRef<ViewerHandle>(null);
   const readerRef = useRef<ReaderHandle>(null);
   const pollRef = useRef<number | null>(null);
+  const pollAbortRef = useRef(false);
+  const dividerCleanupRef = useRef<(() => void) | null>(null);
 
   const stopPolling = useCallback(() => {
+    pollAbortRef.current = true;
     if (pollRef.current != null) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -120,18 +123,24 @@ function App() {
     }
   }, []);
 
-  // Arrête le polling si le composant est démonté
-  useEffect(() => stopPolling, [stopPolling]);
+  useEffect(() => () => {
+    stopPolling();
+    dividerCleanupRef.current?.();
+  }, [stopPolling]);
 
   const startPolling = useCallback(
     (docId: string) => {
       stopPolling();
+      pollAbortRef.current = false;
       pollRef.current = window.setInterval(async () => {
+        if (pollAbortRef.current) return;
         try {
           const st = await getDocStatus(docId);
+          if (pollAbortRef.current) return;
           if (st.status === "ready") {
             stopPolling();
             const result = await getResult(docId);
+            if (pollAbortRef.current) return;
             setDoc(result);
             setLastDocId(docId);
             localStorage.setItem(LS_KEY, docId);
@@ -148,8 +157,8 @@ function App() {
             setProgressPercent(null);
             refreshLibrary();
           }
-          // "not_found" : transitoire juste après le lancement → on continue à poller
         } catch (e) {
+          if (pollAbortRef.current) return;
           stopPolling();
           setError(e instanceof Error ? e.message : "Erreur de suivi du traitement.");
           setLoading(false);
@@ -232,21 +241,19 @@ function App() {
     [doc],
   );
 
-  const handleSelect = (node: OutlineNode) => {
+  const handleSelect = useCallback((node: OutlineNode) => {
     setActiveId(node.id);
     if (node.page != null) viewerRef.current?.scrollToPage(node.page);
-    // En mode Lecteur/Compare, on aligne aussi le Lecteur sur la section cliquée.
     if (viewMode !== "pdf") readerRef.current?.scrollToSection(node.title);
-    setSidebarOpen(false); // ferme le drawer après navigation sur mobile
-  };
+    setSidebarOpen(false);
+  }, [viewMode]);
 
-  const handleGallerySelect = (idx: number) => {
+  const handleGallerySelect = useCallback((idx: number) => {
     setFigureIdx(idx);
     setSidebarOpen(false);
-  };
+  }, []);
 
-  // Légendage IA des figures (Florence-2) puis re-fetch pour afficher caption_ai.
-  const handleCaptionFigures = async () => {
+  const handleCaptionFigures = useCallback(async () => {
     if (!doc) return;
     try {
       await captionFigures(doc.doc_id);
@@ -255,19 +262,17 @@ function App() {
       if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
       else setError(e instanceof Error ? e.message : "Légendage IA indisponible.");
     }
-  };
+  }, [doc]);
 
-  const handlePageChange = (page: number) => {
+  const handlePageChange = useCallback((page: number) => {
     const active = findActiveSection(flatOutline, page);
     if (active && active.id !== activeId) setActiveId(active.id);
-  };
+  }, [flatOutline, activeId]);
 
-  // Reader → PDF : quand l'utilisateur fait défiler le Lecteur en mode Compare,
-  // le Viewer suit (scroll programmatique, ne reboucle pas).
-  const handleReaderPageChange = (page: number) => {
+  const handleReaderPageChange = useCallback((page: number) => {
     handlePageChange(page);
     if (viewMode === "compare") viewerRef.current?.scrollToPage(page);
-  };
+  }, [handlePageChange, viewMode]);
 
   // Diviseur draggable du mode Compare : ajuste la largeur relative des deux panneaux.
   const startDividerDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -279,12 +284,14 @@ function App() {
       const ratio = (ev.clientX - rect.left) / rect.width;
       setSplitRatio(Math.min(0.8, Math.max(0.2, ratio)));
     };
-    const onUp = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointerup", cleanup);
+      dividerCleanupRef.current = null;
     };
+    dividerCleanupRef.current = cleanup;
     window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointerup", cleanup);
   };
 
   const reset = () => {

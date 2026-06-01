@@ -13,6 +13,7 @@ Cache : sur disque, clé = sha256 du PDF. Ne re-traite pas si déjà vu.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -87,12 +88,12 @@ def _clean_title(title: str | None) -> str:
     ).strip()
 
 
-def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any]) -> dict[str, Any]:
+def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any], mtime: float) -> dict[str, Any]:
     """Construit une entrée de catalogue à partir d'un result.json en cache."""
-    source_files = sorted(ddir.glob("source.*"))
-    source = source_files[0] if source_files else None
-    result_file = ddir / "result.json"
-    mtime = result_file.stat().st_mtime if result_file.exists() else ddir.stat().st_mtime
+    source = ddir / "source.pdf"
+    if not source.exists():
+        source_files = sorted(ddir.glob("source.*"))
+        source = source_files[0] if source_files else None
     filename = result.get("filename") or (source.name if source else doc_id)
     title = _clean_title(result.get("pdf_title")) or Path(filename).stem or doc_id
 
@@ -185,9 +186,10 @@ def get_library() -> JSONResponse:
         error_path = item / "error.json"
         if result_path.exists():
             try:
+                st = result_path.stat()
                 with open(result_path, encoding="utf-8") as f:
                     result = json.load(f)
-                documents.append(_library_item_from_result(item.name, item, result))
+                documents.append(_library_item_from_result(item.name, item, result, st.st_mtime))
             except (OSError, json.JSONDecodeError) as e:
                 failed.append({"doc_id": item.name, "status": "failed", "error": f"Cache illisible: {e}"})
         elif error_path.exists():
@@ -308,8 +310,11 @@ def get_outline(doc_id: str) -> dict[str, Any]:
     p = _doc_dir(doc_id) / "result.json"
     if not p.exists():
         raise HTTPException(404, "Document inconnu")
-    with open(p, encoding="utf-8") as f:
-        return json.load(f).get("outline", {})
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f).get("outline", {})
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(422, f"Cache corrompu : {e}")
 
 
 @app.get("/doc/{doc_id}/figure/{fig_id}")
@@ -326,8 +331,11 @@ def get_raw(doc_id: str) -> dict[str, Any]:
     p = _doc_dir(doc_id) / "result.json"
     if not p.exists():
         raise HTTPException(404, "Document inconnu")
-    with open(p, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(422, f"Cache corrompu : {e}")
 
 
 @app.get("/doc/{doc_id}/pdf")
@@ -340,26 +348,10 @@ def get_pdf(doc_id: str) -> FileResponse:
 
 @app.get("/doc/{doc_id}/markdown")
 def get_markdown(doc_id: str) -> FileResponse:
-    """Export markdown Docling. Genere a la demande si absent (cas legacy)."""
-    ddir = _doc_dir(doc_id)
-    md_path = ddir / "result.md"
-    if md_path.exists():
-        return FileResponse(md_path, media_type="text/markdown", filename=f"{doc_id}.md")
-
-    # Fallback : regenerer depuis source.pdf si dispo
-    pdf_path = ddir / "source.pdf"
-    if not pdf_path.exists():
-        raise HTTPException(404, "Document inconnu")
-
-    from pipeline import _converter  # import differe
-
-    try:
-        doc = _converter().convert(str(pdf_path)).document
-        md = doc.export_to_markdown()
-        md_path.write_text(md, encoding="utf-8")
-    except Exception as e:
-        raise HTTPException(422, f"Echec export markdown : {type(e).__name__}: {e}")
-
+    """Export markdown. 404 si non généré (re-uploader le doc pour regénérer)."""
+    md_path = _doc_dir(doc_id) / "result.md"
+    if not md_path.exists():
+        raise HTTPException(404, "Markdown non disponible (re-uploader le document)")
     return FileResponse(md_path, media_type="text/markdown", filename=f"{doc_id}.md")
 
 
@@ -392,6 +384,9 @@ def get_html_part(doc_id: str, start_page: int) -> FileResponse:
 
 @app.delete("/doc/{doc_id}")
 def delete_doc(doc_id: str) -> dict[str, str]:
+    with tasks_lock:
+        if doc_id in active_tasks:
+            raise HTTPException(409, "Document en cours de traitement, réessayez plus tard")
     p = _doc_dir(doc_id)
     if p.exists():
         shutil.rmtree(p)
@@ -423,6 +418,9 @@ def put_annotations(doc_id: str, body: dict) -> dict[str, Any]:
     ddir = _doc_dir(doc_id)
     if not ddir.exists():
         raise HTTPException(404, "Document inconnu")
+    raw_size = len(json.dumps(body, ensure_ascii=False))
+    if raw_size > 1_000_000:
+        raise HTTPException(413, "Annotations trop volumineuses (max 1 Mo)")
     highlights = body.get("highlights", [])
     notes = body.get("notes", {})
     if not isinstance(highlights, list) or not isinstance(notes, dict):
@@ -514,7 +512,7 @@ def tesseract_status() -> JSONResponse:
 
 
 @app.get("/doc/{doc_id}/searchable-pdf")
-def get_searchable_pdf(doc_id: str) -> FileResponse:
+async def get_searchable_pdf(doc_id: str) -> FileResponse:
     """Génère un PDF avec couche texte OCR embarquée via OCRmyPDF + Tesseract.
 
     - PDF natif  : skip_text=True (texte déjà présent, Tesseract complète les vides)
@@ -549,7 +547,7 @@ def get_searchable_pdf(doc_id: str) -> FileResponse:
 
     from pipeline import _is_native_pdf  # import différé
 
-    try:
+    def _run_ocr():
         skip_text = _is_native_pdf(source)
         ocrmypdf.ocr(
             source, searchable,
@@ -558,6 +556,9 @@ def get_searchable_pdf(doc_id: str) -> FileResponse:
             progress_bar=False,
             jobs=2,
         )
+
+    try:
+        await asyncio.to_thread(_run_ocr)
     except Exception as e:
         raise HTTPException(422, f"OCR échoué : {type(e).__name__}: {e}")
 
@@ -588,8 +589,8 @@ def ocr_figure_image(doc_id: str, fig_id: str) -> JSONResponse:
         raise HTTPException(404, "Figure inconnue")
 
     try:
-        img = Image.open(img_path)
-        text = pytesseract.image_to_string(img, lang="fra+eng").strip()
+        with Image.open(img_path) as img:
+            text = pytesseract.image_to_string(img, lang="fra+eng").strip()
     except Exception as e:
         raise HTTPException(422, f"OCR image échoué : {e}")
 
@@ -597,7 +598,7 @@ def ocr_figure_image(doc_id: str, fig_id: str) -> JSONResponse:
 
 
 @app.post("/doc/{doc_id}/latex-ocr")
-def run_latex_ocr(doc_id: str) -> JSONResponse:
+async def run_latex_ocr(doc_id: str) -> JSONResponse:
     """Lance pix2tex sur les figures du document et met à jour result.json.
 
     Requiert pix2tex (pip install pix2tex). Retourne 503 si absent.
@@ -618,30 +619,29 @@ def run_latex_ocr(doc_id: str) -> JSONResponse:
     figures = result.get("figures", [])
     figures_dir = ddir / "figures"
 
-    updated = 0
-    for fig in figures:
-        fig_id = fig.get("id", "")
-        if not FIG_ID_RE.fullmatch(fig_id):
-            continue
-        img_path = figures_dir / f"{fig_id}.png"
-        if not img_path.exists():
-            continue
-        latex = ocr.latex_ocr_figure(img_path)
-        if latex:
-            fig["latex"] = latex
-            updated += 1
+    def _run():
+        nonlocal result
+        count = 0
+        for fig in figures:
+            fid = fig.get("id", "")
+            if not FIG_ID_RE.fullmatch(fid):
+                continue
+            img_path = figures_dir / f"{fid}.png"
+            if not img_path.exists():
+                continue
+            latex = ocr.latex_ocr_figure(img_path)
+            if latex:
+                fig["latex"] = latex
+                count += 1
+        _write_json_atomic(result_path, result)
+        return count
 
-    # Écriture atomique pour éviter un result.json corrompu en cas de lecture concurrente
-    tmp_path = result_path.with_suffix(".json.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, result_path)
-
+    updated = await asyncio.to_thread(_run)
     return JSONResponse({"status": "ok", "figures_updated": updated})
 
 
 @app.post("/doc/{doc_id}/caption-figures")
-def caption_figures(doc_id: str) -> JSONResponse:
+async def caption_figures(doc_id: str) -> JSONResponse:
     """Légende chaque figure via Florence-2 et stocke caption_ai dans result.json.
 
     Opt-in : modèle microsoft/Florence-2-base (~450 Mo) téléchargé au 1er usage.
@@ -662,23 +662,27 @@ def caption_figures(doc_id: str) -> JSONResponse:
     figures = result.get("figures", [])
     figures_dir = ddir / "figures"
 
-    from PIL import Image
-    updated = 0
-    for fig in figures:
-        fig_id = fig.get("id", "")
-        if not FIG_ID_RE.fullmatch(fig_id):
-            continue
-        img_path = figures_dir / f"{fig_id}.png"
-        if not img_path.exists():
-            continue
-        try:
-            caption = captioning.caption_figure(Image.open(img_path).convert("RGB"))
-        except Exception:
-            log.exception("Florence-2 échec sur %s", fig_id)
-            continue
-        if caption:
-            fig["caption_ai"] = caption
-            updated += 1
+    def _run():
+        from PIL import Image
+        count = 0
+        for fig in figures:
+            fid = fig.get("id", "")
+            if not FIG_ID_RE.fullmatch(fid):
+                continue
+            img_path = figures_dir / f"{fid}.png"
+            if not img_path.exists():
+                continue
+            try:
+                with Image.open(img_path) as img:
+                    caption = captioning.caption_figure(img.convert("RGB"))
+            except Exception:
+                log.exception("Florence-2 échec sur %s", fid)
+                continue
+            if caption:
+                fig["caption_ai"] = caption
+                count += 1
+        _write_json_atomic(result_path, result)
+        return count
 
-    _write_json_atomic(result_path, result)
+    updated = await asyncio.to_thread(_run)
     return JSONResponse({"status": "ok", "figures_updated": updated})

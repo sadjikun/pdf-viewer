@@ -250,11 +250,11 @@ def latex_ocr_figure(img_path: Path) -> str | None:
 
     try:
         from PIL import Image
-        img = Image.open(img_path)
-        w, h = img.size
-        if h > w * 0.6 or w * h > 1_000_000:
-            return None
-        latex = _texify_predict(img) if engine == "texify" else _predict(_latex_model, img)
+        with Image.open(img_path) as img:
+            w, h = img.size
+            if h > w * 0.6 or w * h > 1_000_000:
+                return None
+            latex = _texify_predict(img) if engine == "texify" else _predict(_latex_model, img)
         if not latex or len(latex) < 3 or len(latex) > 800:
             return None
         return latex.strip()
