@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,6 +47,7 @@ BATCH_SIZE = int(os.environ.get("PDF_BATCH_SIZE", "30"))
 BATCH_THRESHOLD = int(os.environ.get("PDF_BATCH_THRESHOLD", "50"))
 
 _converter_cache: dict[tuple[bool, bool], DocumentConverter] = {}
+_converter_lock = threading.Lock()
 
 
 def _options(batch_mode: bool = False, do_ocr: bool = True) -> PdfPipelineOptions:
@@ -59,16 +61,17 @@ def _options(batch_mode: bool = False, do_ocr: bool = True) -> PdfPipelineOption
 
 def _converter(batch_mode: bool = False, do_ocr: bool = True) -> DocumentConverter:
     key = (batch_mode, do_ocr)
-    if key not in _converter_cache:
-        log.info("Chargement converter (batch=%s, ocr=%s)", batch_mode, do_ocr)
-        _converter_cache[key] = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=_options(batch_mode, do_ocr)
-                )
-            }
-        )
-    return _converter_cache[key]
+    with _converter_lock:
+        if key not in _converter_cache:
+            log.info("Chargement converter (batch=%s, ocr=%s)", batch_mode, do_ocr)
+            _converter_cache[key] = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_options=_options(batch_mode, do_ocr)
+                    )
+                }
+            )
+        return _converter_cache[key]
 
 
 def _is_native_pdf(pdf_path: Path, sample_pages: int = 3) -> bool:
