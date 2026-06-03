@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { figureUrl } from "../../api";
+import { figureUrl, thumbnailUrl } from "../../api";
 import type { LibraryDocument, LibraryFailure, LibraryTask } from "../../types";
 import { UploadZone } from "../Upload/UploadZone";
 import "./Library.css";
@@ -231,7 +231,12 @@ function DocumentCard({
   onOpen: (docId: string) => void;
   onDelete: (docId: string) => void;
 }) {
-  const cover = doc.cover_figure_id ? figureUrl(doc.doc_id, doc.cover_figure_id) : null;
+  // Couverture : figure si dispo, sinon miniature 1re page pour les PDF, sinon fallback graphique.
+  const cover = doc.cover_figure_id
+    ? figureUrl(doc.doc_id, doc.cover_figure_id)
+    : doc.file_type === "pdf"
+      ? thumbnailUrl(doc.doc_id)
+      : null;
   return (
     <article className={`library-card${compact ? " library-card--compact" : ""}${isLast ? " is-last" : ""}`}>
       <button type="button" className="library-card-open" onClick={() => onOpen(doc.doc_id)}>

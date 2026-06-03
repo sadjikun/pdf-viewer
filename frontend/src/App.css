@@ -64,6 +64,16 @@
   background: var(--row-hover, #20232a);
 }
 
+.app-reprocess {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.app-action--ocr {
+  color: var(--accent, #ff8c00);
+  border-color: var(--accent, #ff8c00);
+}
+
 .app-sidebar-meta {
   font-size: 0.75rem;
   color: var(--muted, #8a8f99);

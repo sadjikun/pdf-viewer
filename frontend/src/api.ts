@@ -108,3 +108,29 @@ export async function saveAnnotations(
 export function ficheUrl(docId: string, format: "html" | "md"): string {
   return `${API_BASE}/doc/${docId}/fiche?format=${format}`;
 }
+
+export function thumbnailUrl(docId: string): string {
+  return `${API_BASE}/doc/${docId}/thumbnail`;
+}
+
+// Retraite un document (force_ocr pour les PDFs hybrides natif + scanné).
+export async function reprocessDoc(
+  docId: string,
+  forceOcr = false,
+): Promise<ProcessingResponse> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/reprocess?force_ocr=${forceOcr}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function cleanupCache(
+  maxAgeDays = 30,
+): Promise<{ cleaned_directories: number; freed_space_mb: number }> {
+  const res = await fetch(`${API_BASE}/cache/cleanup?max_age_days=${maxAgeDays}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
