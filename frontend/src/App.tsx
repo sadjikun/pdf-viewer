@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, captionFigures, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl } from "./api";
+import { ApiError, captionFigures, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl, reprocessDoc } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
 import { Library } from "./components/Library/Library";
@@ -264,6 +264,25 @@ function App() {
     }
   }, [doc]);
 
+  // Retraite le document (force_ocr pour les PDFs hybrides) puis suit via polling.
+  const handleReprocess = useCallback(async (forceOcr = false) => {
+    if (!doc) return;
+    const docId = doc.doc_id;
+    setError(null);
+    setLoading(true);
+    setDoc(null);
+    try {
+      const res = await reprocessDoc(docId, forceOcr);
+      setProgressPercent(res.progress ?? 0);
+      setProgressMessage(res.message ?? "");
+      startPolling(docId);
+    } catch (e) {
+      if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
+      else setError(e instanceof Error ? e.message : "Retraitement impossible.");
+      setLoading(false);
+    }
+  }, [doc, startPolling]);
+
   const handlePageChange = useCallback((page: number) => {
     const active = findActiveSection(flatOutline, page);
     if (active && active.id !== activeId) setActiveId(active.id);
@@ -390,6 +409,26 @@ function App() {
             </div>
             )}
             <ThemeSelect theme={theme} setTheme={setTheme} />
+            {!isMarkitdown && (
+              <div className="app-reprocess" role="group" aria-label="Retraiter le document">
+                <button
+                  type="button"
+                  className="app-action"
+                  onClick={() => handleReprocess(false)}
+                  title="Retraiter le document depuis la source"
+                >
+                  Retraiter
+                </button>
+                <button
+                  type="button"
+                  className="app-action app-action--ocr"
+                  onClick={() => handleReprocess(true)}
+                  title="Retraiter en forçant l'OCR (PDFs hybrides : corps natif + pages scannées)"
+                >
+                  OCR
+                </button>
+              </div>
+            )}
             <a
               className="app-action"
               href={markdownUrl(doc.doc_id)}

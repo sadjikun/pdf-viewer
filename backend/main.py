@@ -80,6 +80,16 @@ def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def _resolve_source(doc_id: str) -> Path | None:
+    """Retourne le fichier source d'un document (source.pdf ou source.*)."""
+    ddir = _doc_dir(doc_id)
+    for pat in ("source.pdf", "source.*"):
+        candidates = sorted(ddir.glob(pat))
+        if candidates:
+            return candidates[0]
+    return None
+
+
 def _clean_title(title: str | None) -> str:
     if not title:
         return ""
@@ -128,17 +138,18 @@ def update_task_progress(doc_id: str, progress: int, message: str) -> None:
             active_tasks[doc_id].update({"progress": progress, "message": message})
 
 
-def run_pipeline_bg(doc_id: str, src_path: Path, ddir: Path, filename: str, is_pdf: bool) -> None:
+def run_pipeline_bg(doc_id: str, src_path: Path, ddir: Path, filename: str, is_pdf: bool, force_ocr: bool = False) -> None:
     """Exécute le pipeline en arrière-plan et écrit result.json ou error.json.
 
     PDF → Docling (convertir_pdf) ; autres formats → MarkItDown (convertir_generic).
+    force_ocr force l'OCR sur les PDFs natifs (cas hybrides).
     """
     from pipeline import convertir_pdf, convertir_generic  # import différé
 
     cb = lambda p, m: update_task_progress(doc_id, p, m)
     try:
         if is_pdf:
-            result = convertir_pdf(src_path, ddir, progress_callback=cb)
+            result = convertir_pdf(src_path, ddir, progress_callback=cb, force_ocr=force_ocr)
         else:
             result = convertir_generic(src_path, ddir, progress_callback=cb)
         result["doc_id"] = doc_id
@@ -346,6 +357,33 @@ def get_pdf(doc_id: str) -> FileResponse:
     return FileResponse(p, media_type="application/pdf")
 
 
+@app.get("/doc/{doc_id}/thumbnail")
+def get_thumbnail(doc_id: str) -> FileResponse:
+    """Miniature de la 1re page du PDF (~200 px de large), mise en cache."""
+    from pipeline import _PDFIUM_LOCK
+    import pypdfium2 as pdfium
+
+    ddir = _doc_dir(doc_id)
+    thumb_path = ddir / "thumbnail.png"
+
+    if not thumb_path.exists():
+        pdf_path = _resolve_source(doc_id)
+        if not pdf_path or not pdf_path.exists():
+            raise HTTPException(404, "PDF source introuvable")
+        try:
+            with _PDFIUM_LOCK:
+                doc = pdfium.PdfDocument(str(pdf_path))
+                try:
+                    img = doc[0].render(scale=0.35).to_pil()
+                finally:
+                    doc.close()
+            img.save(str(thumb_path), "PNG", optimize=True)
+        except Exception as exc:
+            raise HTTPException(500, f"Erreur rendu miniature : {exc}") from exc
+
+    return FileResponse(thumb_path, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
+
+
 @app.get("/doc/{doc_id}/markdown")
 def get_markdown(doc_id: str) -> FileResponse:
     """Export markdown. 404 si non généré (re-uploader le doc pour regénérer)."""
@@ -391,6 +429,88 @@ def delete_doc(doc_id: str) -> dict[str, str]:
     if p.exists():
         shutil.rmtree(p)
     return {"status": "deleted", "doc_id": doc_id}
+
+
+@app.post("/cache/cleanup")
+def cleanup_cache(max_age_days: int = 30) -> JSONResponse:
+    """Supprime les documents en cache plus vieux que max_age_days jours.
+
+    Se base sur le mtime de result.json (ou source.pdf, ou le dossier). Saute
+    les documents en cours de traitement.
+    """
+    cutoff = time.time() - (max_age_days * 86400)
+    cleaned = 0
+    total_freed = 0
+
+    with tasks_lock:
+        active_ids = set(active_tasks.keys())
+
+    for item in CACHE_DIR.iterdir():
+        if not item.is_dir() or not DOC_ID_RE.fullmatch(item.name) or item.name in active_ids:
+            continue
+        result_file = item / "result.json"
+        source_file = item / "source.pdf"
+        mtime = item.stat().st_mtime
+        if result_file.exists():
+            mtime = result_file.stat().st_mtime
+        elif source_file.exists():
+            mtime = source_file.stat().st_mtime
+        if mtime < cutoff:
+            folder_size = sum(f.stat().st_size for f in item.rglob("*") if f.is_file())
+            try:
+                shutil.rmtree(item)
+                cleaned += 1
+                total_freed += folder_size
+            except OSError as e:
+                log.warning("Échec suppression cache %s : %s", item.name, e)
+
+    return JSONResponse({
+        "status": "ok",
+        "cleaned_directories": cleaned,
+        "freed_space_mb": round(total_freed / (1024 * 1024), 2),
+        "max_age_days": max_age_days,
+    })
+
+
+@app.post("/doc/{doc_id}/reprocess")
+async def reprocess_doc(
+    doc_id: str, background_tasks: BackgroundTasks, force_ocr: bool = False
+) -> JSONResponse:
+    """Retraite un document depuis sa source. force_ocr force l'OCR (PDFs hybrides)."""
+    ddir = _doc_dir(doc_id)
+    source = _resolve_source(doc_id)
+    if not source or not source.exists():
+        raise HTTPException(404, "Fichier source introuvable — impossible de retraiter")
+    is_pdf = source.suffix.lower() == ".pdf"
+
+    with tasks_lock:
+        task = active_tasks.get(doc_id)
+        if task:
+            return JSONResponse({"doc_id": doc_id, **task})
+
+    # Purge le cache dérivé en conservant la source
+    for p in list(ddir.iterdir()):
+        if p.name == source.name:
+            continue
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+        else:
+            p.unlink(missing_ok=True)
+
+    with tasks_lock:
+        active_tasks[doc_id] = {
+            "status": "processing",
+            "progress": 0,
+            "message": "Retraitement OCR en file..." if force_ocr else "Retraitement en file...",
+        }
+
+    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, source.name, is_pdf, force_ocr)
+    return JSONResponse({
+        "doc_id": doc_id,
+        "status": "processing",
+        "progress": 0,
+        "message": "Retraitement OCR ajouté à la file..." if force_ocr else "Retraitement ajouté à la file...",
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────

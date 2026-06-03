@@ -48,6 +48,7 @@ BATCH_THRESHOLD = int(os.environ.get("PDF_BATCH_THRESHOLD", "50"))
 
 _converter_cache: dict[tuple[bool, bool], DocumentConverter] = {}
 _converter_lock = threading.Lock()
+_PDFIUM_LOCK = threading.Lock()  # pypdfium2 n'est pas thread-safe sur un même document
 
 
 def _options(batch_mode: bool = False, do_ocr: bool = True) -> PdfPipelineOptions:
@@ -347,19 +348,22 @@ def convertir_pdf(
     pdf_path: Path,
     out_dir: Path,
     progress_callback: ProgressCallback | None = None,
+    force_ocr: bool = False,
 ) -> dict[str, Any]:
     """Convertit un PDF avec Docling et exporte la structure + figures.
 
     progress_callback(percent, message) est appelé aux étapes clés si fourni.
+    force_ocr=True force l'OCR même sur un PDF détecté natif (PDFs hybrides :
+    corps natif + pièces scannées).
     """
     if progress_callback:
         progress_callback(5, "Analyse préliminaire du PDF...")
     n_pages = _count_pages(pdf_path)
     if n_pages > BATCH_THRESHOLD:
         log.info("%s — %d pages, batch, OCR par tranche", pdf_path.name, n_pages)
-        return _convertir_batch(pdf_path, out_dir, n_pages, progress_callback)
+        return _convertir_batch(pdf_path, out_dir, n_pages, progress_callback, force_ocr)
 
-    do_ocr = _needs_ocr(pdf_path)
+    do_ocr = True if force_ocr else _needs_ocr(pdf_path)
     log.info(
         "%s — %d pages, %s, OCR %s",
         pdf_path.name, n_pages,
@@ -423,6 +427,7 @@ def _convertir_simple(
 def _convertir_batch(
     pdf_path: Path, out_dir: Path, n_pages: int,
     progress_callback: ProgressCallback | None = None,
+    force_ocr: bool = False,
 ) -> dict[str, Any]:
     """Conversion par tranches pour les gros PDFs (évite la saturation RAM)."""
     figures_dir = out_dir / "figures"
@@ -451,7 +456,7 @@ def _convertir_batch(
         tmp_pdf = out_dir / f"_batch_{batch_start}_{batch_end}.pdf"
         try:
             _extract_pages_pdf(pdf_path, batch_start, batch_end, tmp_pdf)
-            batch_do_ocr = _needs_ocr(tmp_pdf)
+            batch_do_ocr = True if force_ocr else _needs_ocr(tmp_pdf)
             converter = _converter(batch_mode=True, do_ocr=batch_do_ocr)
             doc = converter.convert(str(tmp_pdf)).document
 
