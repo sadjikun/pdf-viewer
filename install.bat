@@ -2,7 +2,6 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title pdf-viewer - Installation
-
 echo.
 echo  +--------------------------------------+
 echo  ^|       pdf-viewer  --  install        ^|
@@ -28,11 +27,25 @@ if not errorlevel 1 (
 )
 
 echo  [!!] Python non trouve.
-echo       Installe-le depuis https://www.python.org/downloads/
-echo       ou via : winget install Python.Python.3
-echo.
-pause
-exit /b 1
+echo  Voulez-vous installer automatiquement Python 3.13 via winget ? (O/N)
+set /p INSTALL_PY="Votre choix : "
+if /i "!INSTALL_PY!"=="O" (
+    echo Installation de Python 3.13 en cours, veuillez patienter...
+    winget install Python.Python.3.13 --exact --silent --accept-package-agreements --accept-source-agreements
+    if errorlevel 1 (
+        echo  [!!] L'installation automatique a echoue.
+        echo       Installe-le manuellement depuis https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+    echo  [OK] Python installe avec succes ! Veuillez fermer cette fenetre et relancer install.bat.
+    pause
+    exit /b 0
+) else (
+    echo       Installe-le depuis https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
 
 :check_version
 for /f "tokens=1,2 delims=." %%a in ("!PYVER!") do (
@@ -42,13 +55,35 @@ for /f "tokens=1,2 delims=." %%a in ("!PYVER!") do (
 if !PY_MAJOR! LSS 3 goto :py_too_old
 if !PY_MAJOR! EQU 3 if !PY_MINOR! LSS 13 goto :py_too_old
 echo  [OK] Python !PYVER! detecte (!PYCMD!).
+if exist "frontend\dist" (
+    echo  [OK] Frontend pre-construit trouve dans frontend\dist.
+    echo       Node.js n'est pas requis pour executer l'application.
+    set SKIP_NODE=1
+    goto :backend_setup
+)
 goto :check_node
 
 :py_too_old
 echo  [!!] Python !PYVER! trop ancien (3.13 minimum requis).
-echo       Telecharge la derniere version sur https://www.python.org/downloads/
-pause
-exit /b 1
+echo  Voulez-vous installer automatiquement Python 3.13 via winget ? (O/N)
+set /p INSTALL_PY="Votre choix : "
+if /i "!INSTALL_PY!"=="O" (
+    echo Installation de Python 3.13 en cours, veuillez patienter...
+    winget install Python.Python.3.13 --exact --silent --accept-package-agreements --accept-source-agreements
+    if errorlevel 1 (
+        echo  [!!] L'installation automatique a echoue.
+        echo       Installe-le manuellement depuis https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+    echo  [OK] Python installe avec succes ! Veuillez fermer cette fenetre et relancer install.bat.
+    pause
+    exit /b 0
+) else (
+    echo       Telecharge la derniere version sur https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
 
 :check_node
 node --version >nul 2>&1
@@ -62,6 +97,7 @@ if errorlevel 1 (
 )
 for /f %%v in ('node --version') do echo  [OK] Node.js %%v detecte.
 
+:backend_setup
 REM ══════════════════════════════════════════════════════════════════════════
 REM  BACKEND
 REM ══════════════════════════════════════════════════════════════════════════
@@ -96,6 +132,11 @@ deactivate
 
 cd ..
 
+if "!SKIP_NODE!"=="1" (
+    echo  [OK] Skip de l'installation frontend (pre-construit).
+    goto :install_end
+)
+
 REM ══════════════════════════════════════════════════════════════════════════
 REM  FRONTEND
 REM ══════════════════════════════════════════════════════════════════════════
@@ -114,11 +155,12 @@ echo  [OK] Packages npm installes.
 
 cd ..
 
+:install_end
 REM ══════════════════════════════════════════════════════════════════════════
 echo.
 echo  +--------------------------------------+
 echo  ^|  Installation terminee avec succes  ^|
-echo  ^|  Lance start.bat pour demarrer !    ^|
+echo  ^|  Lance start.bat pour demarrer !     ^|
 echo  +--------------------------------------+
 echo.
 pause
