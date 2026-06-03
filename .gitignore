@@ -41,6 +41,12 @@ build/
 dist/
 *.egg-info/
 
+# Artefacts de build du launcher Windows (générés par build.bat / build_installer.py)
+*.spec
+launcher.exe
+pdf-viewer-setup.exe
+pdf-viewer-portable.zip
+
 # Documentation interne projet (gardee en local, pas publiee sur GitHub)
 CLAUDE.md
 DRAFT.md

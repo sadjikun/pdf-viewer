@@ -13,13 +13,13 @@ echo.
 REM ── Verifications ──────────────────────────────────────────────────────────
 if not exist "backend\.venv\Scripts\activate.bat" (
     echo  [!!] Le venv Python n'existe pas.
-    echo       Lance install.bat d'abord, puis relance start.bat.
+    echo       Lance setup_dev.bat d'abord, puis relance start.bat.
     echo.
     pause & exit /b 1
 )
 if not exist "frontend\node_modules" (
     echo  [!!] Les packages npm ne sont pas installes.
-    echo       Lance install.bat d'abord, puis relance start.bat.
+    echo       Lance setup_dev.bat d'abord, puis relance start.bat.
     echo.
     pause & exit /b 1
 )
