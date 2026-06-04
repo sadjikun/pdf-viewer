@@ -17,6 +17,10 @@ interface Props {
   onDelete: (docId: string) => void;
   onUpload: (file: File) => void;
   onRefresh: () => void;
+  /** Référence un PDF/dossier par chemin disque. Retourne un message de résultat. */
+  onRegister: (path: string) => Promise<string>;
+  /** Lance l'analyse Docling d'un document référencé. */
+  onProcess: (docId: string) => void;
 }
 
 const formatDate = (timestamp: number) =>
@@ -45,9 +49,27 @@ export function Library({
   onDelete,
   onUpload,
   onRefresh,
+  onRegister,
+  onProcess,
 }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
+  const [regPath, setRegPath] = useState("");
+  const [regBusy, setRegBusy] = useState(false);
+  const [regMsg, setRegMsg] = useState<string | null>(null);
+
+  const handleRegister = async () => {
+    const path = regPath.trim();
+    if (!path || regBusy) return;
+    setRegBusy(true);
+    setRegMsg(null);
+    try {
+      setRegMsg(await onRegister(path));
+      setRegPath("");
+    } finally {
+      setRegBusy(false);
+    }
+  };
   const [mode, setMode] = useState<"all" | "pdf" | "other">("all");
 
   const filtered = useMemo(() => {
@@ -142,6 +164,7 @@ export function Library({
                 isLast={doc.doc_id === lastDocId}
                 onOpen={onOpen}
                 onDelete={onDelete}
+                onProcess={onProcess}
               />
             ))}
           </div>
@@ -183,6 +206,7 @@ export function Library({
                 isLast={doc.doc_id === lastDocId}
                 onOpen={onOpen}
                 onDelete={onDelete}
+                onProcess={onProcess}
               />
             ))}
           </div>
@@ -191,6 +215,32 @@ export function Library({
             <UploadZone onFile={onUpload} disabled={loading} />
           </div>
         )}
+      </section>
+
+      <section className="library-register" aria-label="Référencer des PDF par chemin">
+        <label className="library-register-label" htmlFor="reg-path">
+          Référencer un PDF ou un dossier (sans copie)
+        </label>
+        <div className="library-register-row">
+          <input
+            id="reg-path"
+            className="library-register-input"
+            value={regPath}
+            onChange={(e) => setRegPath(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleRegister()}
+            placeholder="Ex : C:\\Documents\\rapports  ou  /Users/moi/pdfs/rapport.pdf"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            className="library-register-btn"
+            onClick={handleRegister}
+            disabled={regBusy || !regPath.trim()}
+          >
+            {regBusy ? "…" : "Référencer"}
+          </button>
+        </div>
+        {regMsg && <p className="library-register-msg">{regMsg}</p>}
       </section>
 
       {documents.length > 0 && (
@@ -224,13 +274,16 @@ function DocumentCard({
   isLast,
   onOpen,
   onDelete,
+  onProcess,
 }: {
   doc: LibraryDocument;
   compact?: boolean;
   isLast: boolean;
   onOpen: (docId: string) => void;
   onDelete: (docId: string) => void;
+  onProcess: (docId: string) => void;
 }) {
+  const isRegistered = doc.extraction_mode === "registered";
   // Couverture : figure si dispo, sinon miniature 1re page pour les PDF, sinon fallback graphique.
   const cover = doc.cover_figure_id
     ? figureUrl(doc.doc_id, doc.cover_figure_id)
@@ -243,7 +296,8 @@ function DocumentCard({
         <div className="library-poster">
           {cover ? <img src={cover} alt="" loading="lazy" /> : <PosterFallback doc={doc} />}
           <span className="library-type">{cleanType(doc.file_type)}</span>
-          {doc.needs_reprocess && <span className="library-reprocess">Cache ancien</span>}
+          {isRegistered && <span className="library-registered">Référencé</span>}
+          {!isRegistered && doc.needs_reprocess && <span className="library-reprocess">Cache ancien</span>}
         </div>
         <div className="library-card-body">
           <h3 title={doc.title}>{doc.title}</h3>
@@ -259,11 +313,21 @@ function DocumentCard({
           </div>
         </div>
       </button>
+      {isRegistered && (
+        <button
+          type="button"
+          className="library-card-analyze"
+          onClick={() => onProcess(doc.doc_id)}
+          title="Analyser (extraction Docling complète : sommaire, figures, tables)"
+        >
+          Analyser
+        </button>
+      )}
       <button
         type="button"
         className="library-card-delete"
         onClick={() => onDelete(doc.doc_id)}
-        title="Supprimer du cache"
+        title="Retirer de la bibliothèque"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M18 6 6 18" />

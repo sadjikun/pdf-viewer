@@ -1,4 +1,4 @@
-import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse } from "./types";
+import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse, RegisterPreview, RegisterResult } from "./types";
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -111,6 +111,30 @@ export function ficheUrl(docId: string, format: "html" | "md"): string {
 
 export function thumbnailUrl(docId: string): string {
   return `${API_BASE}/doc/${docId}/thumbnail`;
+}
+
+// Bibliothèque : référencer des PDF par chemin disque (sans copie en cache)
+export async function registerPath(path: string): Promise<RegisterResult> {
+  const res = await fetch(`${API_BASE}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function previewPath(path: string): Promise<RegisterPreview> {
+  const res = await fetch(`${API_BASE}/register/preview?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+// Lance l'analyse Docling complète d'un document référencé.
+export async function processRegisteredDoc(docId: string): Promise<ProcessingResponse> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/process`, { method: "POST" });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
 }
 
 // Retraite un document (force_ocr pour les PDFs hybrides natif + scanné).
