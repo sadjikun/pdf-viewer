@@ -226,10 +226,11 @@ export function Library({
             id="reg-path"
             className="library-register-input"
             value={regPath}
-            onChange={(e) => setRegPath(e.target.value)}
+            onChange={(e) => { setRegPath(e.target.value); if (regMsg) setRegMsg(null); }}
             onKeyDown={(e) => e.key === "Enter" && handleRegister()}
             placeholder="Ex : C:\\Documents\\rapports  ou  /Users/moi/pdfs/rapport.pdf"
             spellCheck={false}
+            aria-describedby={regMsg ? "reg-msg" : undefined}
           />
           <button
             type="button"
@@ -240,7 +241,7 @@ export function Library({
             {regBusy ? "…" : "Référencer"}
           </button>
         </div>
-        {regMsg && <p className="library-register-msg">{regMsg}</p>}
+        {regMsg && <p id="reg-msg" className="library-register-msg">{regMsg}</p>}
       </section>
 
       {documents.length > 0 && (
@@ -284,6 +285,7 @@ function DocumentCard({
   onProcess: (docId: string) => void;
 }) {
   const isRegistered = doc.extraction_mode === "registered";
+  const [imgError, setImgError] = useState(false);
   // Couverture : figure si dispo, sinon miniature 1re page pour les PDF, sinon fallback graphique.
   const cover = doc.cover_figure_id
     ? figureUrl(doc.doc_id, doc.cover_figure_id)
@@ -294,7 +296,11 @@ function DocumentCard({
     <article className={`library-card${compact ? " library-card--compact" : ""}${isLast ? " is-last" : ""}`}>
       <button type="button" className="library-card-open" onClick={() => onOpen(doc.doc_id)}>
         <div className="library-poster">
-          {cover ? <img src={cover} alt="" loading="lazy" /> : <PosterFallback doc={doc} />}
+          {cover && !imgError ? (
+            <img src={cover} alt="" loading="lazy" onError={() => setImgError(true)} />
+          ) : (
+            <PosterFallback doc={doc} />
+          )}
           <span className="library-type">{cleanType(doc.file_type)}</span>
           {isRegistered && <span className="library-registered">Référencé</span>}
           {!isRegistered && doc.needs_reprocess && <span className="library-reprocess">Cache ancien</span>}
