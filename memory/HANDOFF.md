@@ -2,13 +2,39 @@
 
 > **Ce fichier est la première lecture pour tout agent reprenant ce projet.**  
 > Il résume ce qui a été fait, ce qui reste à faire, et dans quel ordre attaquer.  
-> Source de vérité détaillée : `memory/fixes-registry.md` + `memory/technical-debt.md` + `memory/PRD.md`
-
-Dernière mise à jour : **2026-05-25** (session Antigravity)
+> Source de vérité détaillée : `memory/fixes-registry.md` + `memory/PRD.md` + `cache-schema.md` + `architecture.md`
 
 ---
 
-## 1. Ce qui a été livré cette session (FIX-033 → FIX-068)
+## 0. ÉTAT ACTUEL — branche `develop` (MAJ 2026-06-04)
+
+> ⚠️ Les sections 1-4 ci-dessous datent du **2026-05-25** et décrivent la branche
+> v2 d'origine (FIX-033→068, Reader câblé, fast path, de-embedding). **Pour
+> travailler sur `develop`, lire d'abord cette section + `cache-schema.md` +
+> `architecture.md`** (mis à jour). Certains FIX référencent du code absent de develop.
+
+**Travailler sur `develop`** : `git fetch origin && git checkout develop && git rebase origin/main`
+régulièrement (ne pas laisser diverger comme la branche v2 l'a fait).
+
+**Présent sur develop** : async + polling, Library, 10 thèmes, Reader Markdown/HTML
+(hooks extraits dans `hooks/` mais **non câblés** dans MarkdownReader.tsx), multi-format
+MarkItDown, OCR (Tesseract/pix2tex/Texify), Florence-2 captioning, annotations + fiche,
+PWA, launcher pywebview Windows, cleanup/thumbnail/reprocess(force_ocr), **bibliothèque
+documentaire** (référencement par chemin sans copie → `extraction_mode:"registered"`).
+27 endpoints. doc_id toujours 16 hex (`^[a-f0-9]{16}$`).
+
+**Absent de develop** (présent sur la branche v2) : fast path pypdfium2
+(`_extraire_natif`), de-embedding images (`/html-image`), `/health`, `/app-mode`
+(à refactorer — lecture env figée à l'import), endpoint benchmark, Reader câblé aux hooks,
+ModeChooser, son installeur production complet.
+
+**Prochaines pistes** : câbler les hooks dans MarkdownReader (TD côté équipe sadjikun),
+tester les features ML en local (modèles non en cache CI), valider le rendu navigateur
+(Compare/themes/Library/register), éventuellement de-embedding pour alléger le HTML.
+
+---
+
+## 1. Ce qui a été livré (session v2, FIX-033 → FIX-068 — historique branche v2)
 
 | FIX | Résumé | Fichiers touchés |
 |-----|--------|-----------------|

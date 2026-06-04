@@ -1,40 +1,51 @@
 # ARCHITECTURE — Vue système
 
-Dernière mise à jour : 2026-05-21
+Dernière mise à jour : 2026-06-04 (aligné sur la branche `develop`)
+
+> ⚠️ État de **`develop`**. Le fast path pypdfium2 (`_extraire_natif`,
+> `has_native_text`, `extraction_mode "fast"/"native"`), le de-embedding d'images,
+> la rastérisation `cleaned.pdf` et l'endpoint benchmark de la v2 d'origine ne sont
+> **pas** sur develop.
 
 ---
 
-## Vue d'ensemble
+## Vue d'ensemble (traitement asynchrone)
 
 ```
-┌──────────────┐  POST /process (PDF)   ┌─────────────────────────────────┐
-│   Browser    │ ──────────────────────► │  FastAPI  main.py               │
-│  React 19    │                         │  - hash SHA256[:16] → doc_id    │
-│  Vite        │ ◄── JSONResponse ──── │  - background task → pipeline   │
-│  TypeScript  │                         └──────────┬──────────────────────┘
-│              │  GET /doc/{id}/outline              │
-│  3 panneaux  │ ◄── outline JSON ──────────────── │ cache/{id}/result.json
-│  - PDF.js    │                                     │
-│  - Reader    │  GET /doc/{id}/pdf                  ▼
-│  - Compare   │ ◄── FileResponse ───── ┌─────────────────────────────────┐
-└──────────────┘                         │  pipeline.py                    │
-                                         │  convertir_pdf()                │
-                                         │    → has_native_text() ?        │
-                                         │      oui → _extraire_natif()    │
-                                         │      non → Docling (OCR)        │
-                                         └──────────┬──────────────────────┘
-                                                    │
-                                         ┌──────────▼──────────────────────┐
-                                         │  cache/{doc_id}/                │
-                                         │  ├── source.pdf                 │
-                                         │  ├── result.json                │
-                                         │  ├── result.html                │
-                                         │  ├── result.md                  │
-                                         │  ├── cleaned.pdf (si JPEG2000)  │
-                                         │  ├── figures/f_0.png …         │
-                                         │  └── tables/ (futur)           │
-                                         └─────────────────────────────────┘
+┌──────────────┐  POST /process (upload)   ┌─────────────────────────────────┐
+│   Browser    │ ─────────────────────────► │  FastAPI  main.py               │
+│  React 19    │  POST /register (chemin)   │  - doc_id = sha256(contenu       │
+│  Vite + TS   │ ─────────────────────────► │            OU chemin)[:16]       │
+│              │ ◄── {status:"processing"} ─ │  - BackgroundTasks → pipeline   │
+│  Library     │                            └──────────┬──────────────────────┘
+│  3 panneaux  │  GET /doc/{id}/status (poll)          │
+│  - PDF.js    │ ◄── progress 0→100 ─────────────────  │
+│  - Reader    │  GET /doc/{id}/outline|pdf|html|…     ▼
+│  - Compare   │ ◄── JSON / FileResponse ── ┌─────────────────────────────────┐
+└──────────────┘                            │  pipeline.py                    │
+                                            │  convertir_pdf()  → Docling     │
+                                            │    _needs_ocr() par page        │
+                                            │    > 50 pages → batch (tranches)│
+                                            │  convertir_generic() → MarkItDown│
+                                            └──────────┬──────────────────────┘
+                                                       │
+                                            ┌──────────▼──────────────────────┐
+                                            │  cache/{doc_id}/                │
+                                            │  ├── source.pdf  (sauf registered)│
+                                            │  ├── result.json                │
+                                            │  ├── result.html + html_part_*  │
+                                            │  ├── result.md                  │
+                                            │  ├── thumbnail.png              │
+                                            │  └── figures/f_0.png …          │
+                                            └─────────────────────────────────┘
 ```
+
+Trois façons d'entrer un document :
+- **`POST /process`** : upload (PDF → Docling, autres → MarkItDown), async.
+- **`POST /register`** : référence un PDF/dossier par chemin, **sans copie** (scan léger
+  pypdfium2 → `extraction_mode:"registered"`). Analyse Docling à la demande via
+  **`POST /doc/{id}/process`**.
+- **`POST /doc/{id}/reprocess`** : ré-extrait depuis la source (`force_ocr` pour hybrides).
 
 ---
 
@@ -42,45 +53,48 @@ Dernière mise à jour : 2026-05-21
 
 | Constante | Valeur | Fichier | Rôle |
 |-----------|--------|---------|------|
-| `BATCH_SIZE` | 10 | `pipeline.py` | Pages par tranche Docling (réduit OOM) |
-| `_NATIVE_CHAR_MIN` | 100 | `pipeline.py` | Chars sur 3 pages pour déclarer PDF natif |
-| `images_scale` | 2.0 | `pipeline.py` | Résolution extraction figures (144 DPI) |
-| `MIN_DIM` | 50 px | `pipeline.py` | Filtre figures trop petites |
-| `MIN_AREA` | 2500 px² | `pipeline.py` | Filtre figures trop petites (50×50) |
-| `MAX_UPLOAD_BYTES` | 100 MB | `main.py` | Limite upload |
-| `CACHE_DIR` | `backend/cache/` | `main.py` | Répertoire cache |
-| `FORMULA_ENRICHMENT` | `0` (env var) | `pipeline.py` | Active CodeFormulaV2 Docling |
-| `PIX2TEX_FALLBACK` | `1` (env var) | `pipeline.py` | Active pix2tex après CodeFormulaV2 |
+| `BATCH_SIZE` | 30 (env `PDF_BATCH_SIZE`) | `pipeline.py` | Pages par tranche Docling |
+| `BATCH_THRESHOLD` | 50 (env `PDF_BATCH_THRESHOLD`) | `pipeline.py` | Seuil de bascule en mode batch |
+| `_TEXT_NATIVE_THRESHOLD` | 50 | `pipeline.py` | Chars/page mini pour « natif » (skip OCR) |
+| `images_scale` | 2.0 (1.0 en batch) | `pipeline.py` | Résolution extraction figures |
+| `MAX_UPLOAD_BYTES` | 100 Mo | `main.py` | Limite upload |
+| `DOC_ID_RE` | `^[a-f0-9]{16}$` | `main.py` | Validation doc_id (anti path-traversal) |
+| `FORMULA_ENGINE` | `auto` (env) | `ocr.py` | `texify` \| `pix2tex` \| `auto` pour `/latex-ocr` |
+| `_PDFIUM_LOCK` / `_converter_lock` | — | `pipeline.py` | Sérialisent pypdfium2 / l'init Docling (thread-safety) |
 
 ---
 
-## Flux de données détaillé
+## Flux de données
 
-### Upload d'un nouveau PDF
-1. Frontend : `POST /process` avec `multipart/form-data`
-2. `main.py` : hash SHA256 → `doc_id` (16 chars hex)
-3. Si `result.json` existe → retourne cache immédiatement (idempotent)
-4. Sinon : écrit `source.pdf`, ajoute tâche background, retourne `{status: "processing"}`
-5. Frontend poll `GET /doc/{id}/status` (progress 0→100)
-6. Pipeline écrit `result.json` → status passe à `"ready"`
+### Upload (`POST /process`)
+1. Validation extension (`{.pdf} ∪ MARKITDOWN_EXTENSIONS`), taille, magic `%PDF`.
+2. `doc_id = sha256(contenu)[:16]`. Cache hit → retour immédiat de `result.json`.
+3. Sinon : écrit `source.<ext>`, enregistre `active_tasks[doc_id]`, lance `run_pipeline_bg`,
+   retourne `{status:"processing"}`.
+4. Frontend poll `GET /doc/{id}/status` (`processing` → `ready` | `failed`).
 
-### Pipeline extraction (Docling path)
-1. `has_native_text()` via pypdfium2 (3 premières pages, > 100 chars)
-2. Si natif → `_extraire_natif()` : TOC + texte + figures pypdfium2
-3. Si scanné → Docling par tranches de `BATCH_SIZE=10` pages
-   - `PdfPipelineOptions` : `generate_picture_images=True`, `images_scale=2.0`
-   - `do_formula_enrichment=True` si `FORMULA_ENRICHMENT=1`
-   - Batch OK → extraction sections, figures, tables, HTML, Markdown
-   - Batch FAIL → retry page-par-page
-4. pix2tex fallback si `PIX2TEX_FALLBACK=1` et pix2tex installé
-5. `_fix_formula_html()` : classe `formula-not-decoded` → `formula` si LaTeX détecté
-6. `_strip_page_headers_footers()` sur le HTML final
+### Référencement (`POST /register`)
+1. Chemin (fichier ou dossier) → pour chaque PDF : `doc_id = sha256(chemin_résolu)[:16]`.
+2. `_register_pdf` : scan pypdfium2 (n_pages, dimensions, titre) + miniature →
+   `result.json` `extraction_mode:"registered"` + `source_path`. **Pas de copie.**
+3. Apparaît dans la Library (PDF visible). « Analyser » → `POST /doc/{id}/process`
+   copie le fichier en cache puis lance Docling complet.
+
+### Pipeline (`convertir_pdf`)
+1. `_count_pages` ; si > `BATCH_THRESHOLD` → `_convertir_batch` (tranches).
+2. `do_ocr = force_ocr or _needs_ocr(pdf)` (longueurs de texte par page).
+3. Docling (`DocumentConverter` mis en cache par `(batch, ocr)`) → pages, figures,
+   tables, sections → outline.
+4. Export `result.md` + HTML (`_docling_html_body` EMBEDDED → `_write_html_artifacts`).
+5. ML optionnels à la demande : `/latex-ocr` (pix2tex/Texify), `/caption-figures` (Florence-2),
+   `/searchable-pdf` (OCRmyPDF) — async via `asyncio.to_thread`.
 
 ### Rendu frontend
-- **PDF viewer** : react-pdf + PDF.js. Si JPEG2000/ICC → `cleaned.pdf` (rastérisé pypdfium2)
-- **Reader** : `GET /doc/{id}/html` → `MarkdownReader.tsx` → `sectionizeHtml()` → sections
-  - KaTeX auto-render sur `$...$` et `$$...$$` (pas d'`ignoredClasses`)
-- **Compare** : PDF viewer gauche + Reader droite, synchronisés via `forwardRef` handles
+- **PDF viewer** : react-pdf + PDF.js (virtualisation, IntersectionObserver, markers figures).
+- **Reader** : `/html-manifest` → `/html-part/{start}` (HTML Docling) ; fallback `/markdown`.
+  `sectionizeHtml` (helpers dans `readerHtml.ts`), KaTeX auto-render.
+- **Compare** : Viewer + Reader côte à côte, diviseur draggable, sync Reader→PDF.
+- **Launcher desktop** (Windows) : `launcher.py` (pywebview) spawn `uvicorn main:app` + Vite/dist.
 
 ---
 
@@ -89,14 +103,16 @@ Dernière mise à jour : 2026-05-21
 ### `result.json` → frontend
 ```typescript
 {
-  doc_id: string           // 16 chars hex
-  filename: string         // nom original
-  extraction_mode: "fast" | "native" | "docling"
+  doc_id: string                                  // 16 hex
+  filename: string
+  extraction_mode: "docling" | "markitdown" | "registered"
+  source_path?: string                            // registered uniquement
+  needs_reprocess?: boolean
+  n_pages: number; n_figures: number; n_tables: number
   pages: Array<{number: number, width: number, height: number}>
-  outline: OutlineNode[]   // arbre récursif (children)
+  outline: OutlineNode[]
   figures: Figure[]
   tables: Table[]
-  tesseract_available: boolean
 }
 ```
 
@@ -107,28 +123,30 @@ Dernière mise à jour : 2026-05-21
 
 ### `Figure`
 ```typescript
-{ id: string, page: number, bbox: number[]|null, caption: string, latex?: string }
+{ id: string, page: number|null, bbox: number[]|null, caption: string, latex?: string, caption_ai?: string }
 ```
 
 ### `Table`
 ```typescript
-{ id: string, page: number, bbox: number[]|null, caption: string, html: string, n_rows: number, n_cols: number }
+{ id: string, page: number|null, bbox: number[]|null, caption: string, html: string }
+// dimensions n×n calculées côté frontend (composant Tables), pas dans result.json
 ```
 
 ---
 
 ## Stack technique
 
-| Couche | Technologie | Version |
-|--------|-------------|---------|
-| Backend runtime | Python | 3.13 |
-| API | FastAPI + uvicorn | 0.2.0 |
-| ML extraction | Docling | 2.92+ |
-| PDF natif | pypdfium2 | latest |
-| PDF fix ICC | PyMuPDF (fitz) | latest |
-| OCR inline | RapidOCR (via Docling) | — |
-| OCR couche | OCRmyPDF + Tesseract | optionnel |
-| Formules ML | pix2tex (LaTeX-OCR) | optionnel |
-| Frontend | React 19 + Vite + TypeScript | — |
-| PDF viewer | react-pdf (PDF.js) | — |
-| Formules rendu | KaTeX auto-render | — |
+| Couche | Technologie | Notes |
+|--------|-------------|-------|
+| Backend runtime | Python 3.13 | |
+| API | FastAPI + uvicorn | 24+ endpoints, async ML via to_thread |
+| ML extraction | Docling 2.92 | DocumentConverter caché, batch > 50p |
+| Multi-format | MarkItDown[all] | DOCX/PPTX/XLSX/HTML/images/notebooks |
+| PDF natif/miniatures | pypdfium2 | `_count_pages`, `_page_text_lengths`, register, thumbnail (sous `_PDFIUM_LOCK`) |
+| OCR couche texte | OCRmyPDF + Tesseract | optionnel (`/searchable-pdf`, `/ocr-image`) |
+| Formules ML | pix2tex / Texify | optionnel (`FORMULA_ENGINE`, `/latex-ocr`) |
+| Captioning figures | Florence-2 | optionnel (`/caption-figures`) |
+| Frontend | React 19 + Vite + TS | Library, Reader, Compare, 10 thèmes |
+| PDF viewer | react-pdf (PDF.js) | |
+| Formules rendu | KaTeX | |
+| Launcher desktop | pywebview (Windows) | `launcher.py` / `launcher_core.py`, opt. |
