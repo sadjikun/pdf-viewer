@@ -1,12 +1,20 @@
 # INDEX — Catalogue mémoire
 
-Mis à jour : 2026-06-01
+Mis à jour : 2026-06-04
 Pages actives : 11
 
 Wiki de connaissance projet, construit par MHDINGBI pour ses agents IA
-(Codex, Antigravity, Gemini) et porté sur main pour partage.
+(Codex, Antigravity, Gemini) et porté sur main/develop pour partage.
 
-Flux **LECTURE** : INDEX.md → HANDOFF.md → fixes-registry.md → page spécifique
+> **État de fraîcheur (2026-06-04)** — alignés sur la branche `develop` :
+> `HANDOFF` (section 0), `cache-schema`, `architecture`, `LOG` (entrée du haut).
+> **Directionnels** (cap projet, pas l'implémentation exacte) : `VISION`, `PRD`,
+> `ROADMAP`, `decisions`. **Historiques branche v2** (référencent du code partiellement
+> absent de develop : Reader câblé, de-embedding, fast path) : `fixes-registry`,
+> `formulas`, sections 1-4 de `HANDOFF`. En cas de doute sur l'implémentation réelle,
+> `cache-schema` + `architecture` font foi pour develop.
+
+Flux **LECTURE** : INDEX.md → HANDOFF.md (section 0) → cache-schema/architecture → page spécifique
 Flux **ÉCRITURE** : mettre à jour page → INDEX.md (si nouvelle) → LOG.md
 
 ---

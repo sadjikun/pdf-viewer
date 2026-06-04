@@ -3,6 +3,29 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-06-04 — Branche `develop` : intégration progressive + bibliothèque documentaire (sadjikun)
+**Contexte :** La PR #5 (v2) avait été décomposée en sous-PRs sur `main` (async, library,
+10 thèmes, Reader, multi-format, OCR, Florence-2, Texify, annotations, fiche, PWA). La
+branche `develop` (recréée depuis main) sert de base de travail synchronisée. Travaux de
+cette session, tous sur develop :
+- **Installeur Windows** (`install.bat`/`setup_dev.bat`) : auto-install Python 3.13 via winget.
+- **Launcher desktop** (`launcher.py`/`launcher_core.py`/`setup.bat`/`build_installer.py`) :
+  fenêtre pywebview, spawn `uvicorn main:app` + Vite/dist, détection WebView2. 12 tests.
+- **cleanup / thumbnail / reprocess** : `POST /cache/cleanup`, `GET /doc/{id}/thumbnail`
+  (pypdfium2), `POST /doc/{id}/reprocess?force_ocr` (PDFs hybrides) + `force_ocr` dans `convertir_pdf`.
+- **Bibliothèque documentaire** : `POST /register` (référence PDF/dossier par chemin **sans copie**),
+  `GET /register/preview`, `POST /doc/{id}/process` (analyse à la demande). doc_id = `sha256(chemin)[:16]`
+  (garde `DOC_ID_RE` strict — amélioration vs la v2 qui dérivait l'ID du nom de fichier). `extraction_mode:"registered"`,
+  `source_path`. Barre « Référencer » + badge + bouton « Analyser » côté frontend.
+- **Wiki d'agents** porté sur main puis develop (HANDOFF, VISION, PRD, ROADMAP, fixes-registry,
+  architecture, cache-schema, decisions, LOG, formulas).
+- **Audit bugs** : 5 corrections (pypdfium2 sans `_PDFIUM_LOCK` → crash concurrent ; race polling /
+  ouverture doc ; vignette thumbnail sans onError ; reprocess `p.name` fragile ; regMsg persistant).
+**Tests :** 46 pytest backend (dont 8 register, 12 launcher), tsc/eslint/vite verts.
+**Divergences assumées vs la branche v2 :** non portés → fast path pypdfium2, de-embedding d'images
+(`/html-image`), `/health`, `/app-mode` (cassé avec notre lecture env à l'import), benchmark, son
+Reader câblé (hooks extraits mais non branchés — voir cache-schema/architecture pour l'état réel).
+
 ### 2026-05-31 — Refactoring code quality : extraction de 6 hooks depuis MarkdownReader.tsx
 **Fichiers modifiés :** `frontend/src/components/Reader/MarkdownReader.tsx`, `frontend/src/components/Reader/buildExportHtml.ts` (nouveau), `frontend/src/components/Reader/hooks/useAppearance.ts` (nouveau), `frontend/src/components/Reader/hooks/useTts.ts` (nouveau), `frontend/src/components/Reader/hooks/useImageLightbox.ts` (nouveau), `frontend/src/components/Reader/hooks/useSearch.ts` (nouveau), `frontend/src/components/Reader/hooks/usePdfPageSync.ts` (nouveau)
 **Résumé :** Extraction de 6 hooks personnalisés et 1 utilitaire depuis MarkdownReader.tsx (3 603 → ~2 700 lignes, 46 → ~23 useState). Phase 0 : `buildExportHtml.ts` extrait le téléchargement HTML standalone (~200 lignes). Phase 1 : `useAppearance` (8 state — typographie, zoom, popovers). Phase 2 : `useTts` (4 state — synthèse vocale). Phase 3 : `useImageLightbox` (2 state — lightbox images). Phase 4 : `useSearch` (4 state — recherche in-reader + sync sidebar). Phase 6 : `usePdfPageSync` (8 state — scroll handler, progress, breadcrumb, navigation pages PDF + anti-boucle FIX-026). Chaque extraction validée par `tsc -b && vite build` (0 erreur). `useAnnotations` (Phase 5) bloqué par dépendances circulaires — nécessite extraction préalable des utilitaires partagés (types Highlight, findSectionInfo, findPageNo, shortHash, normForKey).
