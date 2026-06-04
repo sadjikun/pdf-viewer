@@ -498,9 +498,11 @@ async def reprocess_doc(
         if task:
             return JSONResponse({"doc_id": doc_id, **task})
 
-    # Purge le cache dérivé en conservant la source
+    # Purge le cache dérivé en conservant la source copiée (source.*). Pour un
+    # doc référencé (source externe), aucun fichier source.* en cache → tout est purgé,
+    # mais `source` a déjà été résolu (chemin externe) avant la purge.
     for p in list(ddir.iterdir()):
-        if p.name == source.name:
+        if p.name == "source.pdf" or p.name.startswith("source."):
             continue
         if p.is_dir():
             shutil.rmtree(p, ignore_errors=True)

@@ -94,6 +94,11 @@ def _needs_ocr_from_lengths(lengths: list[int]) -> bool:
 def _page_text_lengths(pdf_path: Path, sample_pages: int | None = None) -> list[int]:
     """Longueur du texte extractible par page, sans charger Docling."""
     import pypdfium2 as pdfium
+    with _PDFIUM_LOCK:
+        return _page_text_lengths_locked(pdf_path, sample_pages, pdfium)
+
+
+def _page_text_lengths_locked(pdf_path: Path, sample_pages, pdfium) -> list[int]:
     pdf = pdfium.PdfDocument(str(pdf_path))
     try:
         total = len(pdf)
@@ -139,21 +144,23 @@ def _provenance(item) -> tuple[int | None, list[float] | None]:
 
 def _count_pages(pdf_path: Path) -> int:
     import pypdfium2 as pdfium
-    pdf = pdfium.PdfDocument(str(pdf_path))
-    n = len(pdf)
-    pdf.close()
+    with _PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(pdf_path))
+        n = len(pdf)
+        pdf.close()
     return n
 
 
 def _extract_pages_pdf(pdf_path: Path, start: int, end: int, out_path: Path) -> None:
     """Extrait les pages [start, end] (1-indexé) dans un nouveau PDF."""
     import pypdfium2 as pdfium
-    src = pdfium.PdfDocument(str(pdf_path))
-    dst = pdfium.PdfDocument.new()
-    dst.import_pages(src, list(range(start - 1, end)))
-    dst.save(str(out_path))
-    dst.close()
-    src.close()
+    with _PDFIUM_LOCK:
+        src = pdfium.PdfDocument(str(pdf_path))
+        dst = pdfium.PdfDocument.new()
+        dst.import_pages(src, list(range(start - 1, end)))
+        dst.save(str(out_path))
+        dst.close()
+        src.close()
 
 
 def _extraire_pages(doc, page_offset: int = 0) -> list[dict[str, Any]]:

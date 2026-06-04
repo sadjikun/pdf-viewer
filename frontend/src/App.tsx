@@ -175,6 +175,7 @@ function App() {
   }, []);
 
   const openDocument = useCallback(async (docId: string) => {
+    stopPolling(); // annule un éventuel polling en cours (analyse/reprocess d'un autre doc)
     setError(null);
     setLoading(true);
     try {
@@ -188,7 +189,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [stopPolling]);
 
   const handleDeleteDocument = useCallback(
     async (docId: string) => {
