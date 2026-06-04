@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, captionFigures, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl, reprocessDoc } from "./api";
+import { ApiError, captionFigures, deleteDoc, getDocStatus, getLibrary, getResult, markdownUrl, processPdf, pdfUrl, reprocessDoc, registerPath, processRegisteredDoc } from "./api";
 import { FigureOverlay } from "./components/Figure/FigureOverlay";
 import { Gallery } from "./components/Gallery/Gallery";
 import { Library } from "./components/Library/Library";
@@ -283,6 +283,38 @@ function App() {
     }
   }, [doc, startPolling]);
 
+  // Référence un PDF/dossier par chemin (sans copie). Retourne un message de résultat.
+  const handleRegister = useCallback(async (path: string): Promise<string> => {
+    try {
+      const r = await registerPath(path);
+      await refreshLibrary();
+      const parts: string[] = [];
+      if (r.registered.length) parts.push(`${r.registered.length} référencé(s)`);
+      if (r.skipped.length) parts.push(`${r.skipped.length} déjà présent(s)`);
+      if (r.errors.length) parts.push(`${r.errors.length} erreur(s)`);
+      return parts.length ? parts.join(" · ") : "Aucun PDF trouvé à ce chemin.";
+    } catch (e) {
+      return e instanceof ApiError ? `[${e.status}] ${e.message}` : "Référencement impossible.";
+    }
+  }, [refreshLibrary]);
+
+  // Lance l'analyse Docling complète d'un document référencé, puis suit via polling.
+  const handleProcessRegistered = useCallback(async (docId: string) => {
+    setError(null);
+    setLoading(true);
+    setDoc(null);
+    try {
+      const res = await processRegisteredDoc(docId);
+      setProgressPercent(res.progress ?? 0);
+      setProgressMessage(res.message ?? "");
+      startPolling(docId);
+    } catch (e) {
+      if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
+      else setError(e instanceof Error ? e.message : "Analyse impossible.");
+      setLoading(false);
+    }
+  }, [startPolling]);
+
   const handlePageChange = useCallback((page: number) => {
     const active = findActiveSection(flatOutline, page);
     if (active && active.id !== activeId) setActiveId(active.id);
@@ -348,6 +380,8 @@ function App() {
           onDelete={handleDeleteDocument}
           onUpload={handleFile}
           onRefresh={refreshLibrary}
+          onRegister={handleRegister}
+          onProcess={handleProcessRegistered}
         />
       </div>
     );
@@ -356,9 +390,11 @@ function App() {
   const figures = doc.figures;
   const total = figures.length;
   const current = figureIdx != null ? figures[figureIdx] : null;
+  // Document référencé non encore analysé : seul le PDF est dispo (pas de Markdown/HTML).
+  const isRegistered = doc.extraction_mode === "registered";
   // Document non-PDF (MarkItDown) : pas de PDF à afficher → vue Lecteur forcée.
-  const isMarkitdown = doc.extraction_mode === "markitdown" || (doc.pages?.length ?? 0) === 0;
-  const effectiveViewMode = isMarkitdown ? "reader" : viewMode;
+  const isMarkitdown = !isRegistered && (doc.extraction_mode === "markitdown" || (doc.pages?.length ?? 0) === 0);
+  const effectiveViewMode = isRegistered ? "pdf" : isMarkitdown ? "reader" : viewMode;
 
   return (
     <div className={`app${sidebarOpen ? " sidebar-open" : ""}`}>
@@ -380,7 +416,7 @@ function App() {
         <div className="app-sidebar-header">
           <h2>{TAB_TITLES[tab]}</h2>
           <div className="app-actions">
-            {!isMarkitdown && (
+            {!isMarkitdown && !isRegistered && (
             <div className="app-view-toggle" role="group" aria-label="Mode d'affichage">
               <button
                 type="button"
@@ -409,7 +445,16 @@ function App() {
             </div>
             )}
             <ThemeSelect theme={theme} setTheme={setTheme} />
-            {!isMarkitdown && (
+            {isRegistered ? (
+              <button
+                type="button"
+                className="app-action app-action--ocr"
+                onClick={() => handleProcessRegistered(doc.doc_id)}
+                title="Analyse Docling complète : sommaire, figures, tables, Lecteur"
+              >
+                Analyser
+              </button>
+            ) : !isMarkitdown && (
               <div className="app-reprocess" role="group" aria-label="Retraiter le document">
                 <button
                   type="button"
@@ -429,14 +474,16 @@ function App() {
                 </button>
               </div>
             )}
-            <a
-              className="app-action"
-              href={markdownUrl(doc.doc_id)}
-              download={`${doc.doc_id}.md`}
-              title="Télécharger en Markdown"
-            >
-              .md
-            </a>
+            {!isRegistered && (
+              <a
+                className="app-action"
+                href={markdownUrl(doc.doc_id)}
+                download={`${doc.doc_id}.md`}
+                title="Télécharger en Markdown"
+              >
+                .md
+              </a>
+            )}
             <button type="button" className="app-reset" onClick={reset}>
               Nouveau doc
             </button>

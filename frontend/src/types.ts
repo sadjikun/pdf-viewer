@@ -43,6 +43,7 @@ export interface DocResult {
   filename?: string;
   file_type?: string;
   extraction_mode?: ExtractionMode | "unknown";
+  source_path?: string;
 }
 
 // Réponse de POST /process quand le traitement démarre en arrière-plan.
@@ -61,7 +62,19 @@ export interface DocStatus {
   error?: string;
 }
 
-export type ExtractionMode = "native" | "docling" | "fast" | "markitdown";
+export type ExtractionMode = "native" | "docling" | "fast" | "markitdown" | "registered";
+
+export interface RegisterResult {
+  registered: string[];
+  skipped: { path: string; reason: string }[];
+  errors: { path: string; reason: string }[];
+}
+
+export interface RegisterPreview {
+  pdf_count: number;
+  pdfs: string[];
+  exists: boolean;
+}
 
 export interface HtmlManifestEntry {
   start: number;

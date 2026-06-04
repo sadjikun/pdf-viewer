@@ -81,12 +81,22 @@ def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
 
 
 def _resolve_source(doc_id: str) -> Path | None:
-    """Retourne le fichier source d'un document (source.pdf ou source.*)."""
+    """Retourne le fichier source : source.pdf/source.* en cache, sinon (doc
+    référencé) le source_path absolu stocké dans result.json."""
     ddir = _doc_dir(doc_id)
     for pat in ("source.pdf", "source.*"):
         candidates = sorted(ddir.glob(pat))
         if candidates:
             return candidates[0]
+    rp = ddir / "result.json"
+    if rp.exists():
+        try:
+            with open(rp, encoding="utf-8") as f:
+                sp = json.load(f).get("source_path", "")
+            if sp:
+                return Path(sp)
+        except (OSError, json.JSONDecodeError):
+            pass
     return None
 
 
@@ -351,8 +361,8 @@ def get_raw(doc_id: str) -> dict[str, Any]:
 
 @app.get("/doc/{doc_id}/pdf")
 def get_pdf(doc_id: str) -> FileResponse:
-    p = _doc_dir(doc_id) / "source.pdf"
-    if not p.exists():
+    p = _resolve_source(doc_id)
+    if not p or not p.exists() or p.suffix.lower() != ".pdf":
         raise HTTPException(404, "PDF source absent")
     return FileResponse(p, media_type="application/pdf")
 
@@ -511,6 +521,166 @@ async def reprocess_doc(
         "progress": 0,
         "message": "Retraitement OCR ajouté à la file..." if force_ocr else "Retraitement ajouté à la file...",
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bibliothèque : référencement de PDF par chemin (sans copie dans le cache)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _path_doc_id(source_path: Path) -> str:
+    """doc_id stable (16 hex) dérivé du chemin absolu — respecte DOC_ID_RE."""
+    return hashlib.sha256(str(source_path.resolve()).encode("utf-8")).hexdigest()[:16]
+
+
+def _register_pdf(source_path: Path) -> str:
+    """Référence un PDF (sans le copier) : scan léger pypdfium2 + miniature.
+
+    Écrit un result.json extraction_mode="registered" pointant vers le fichier
+    d'origine via source_path. L'analyse Docling complète se fait à la demande
+    via POST /doc/{id}/process.
+    """
+    from pipeline import _PDFIUM_LOCK
+    import pypdfium2 as pdfium
+
+    if not source_path.exists() or not source_path.is_file():
+        raise FileNotFoundError("Fichier introuvable")
+
+    doc_id = _path_doc_id(source_path)
+    ddir = _doc_dir(doc_id)
+    ddir.mkdir(parents=True, exist_ok=True)
+
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(source_path))
+        try:
+            n_pages = len(doc)
+            title = _clean_title(doc.get_metadata_value("Title"))
+            pages_info: list[dict[str, Any]] = []
+            for i in range(n_pages):
+                try:
+                    w, h = doc[i].get_size()
+                    pages_info.append({"number": i + 1, "width": w, "height": h})
+                except Exception:
+                    pages_info.append({"number": i + 1, "width": 595.0, "height": 842.0})
+            thumb_path = ddir / "thumbnail.png"
+            if not thumb_path.exists():
+                try:
+                    doc[0].render(scale=0.35).to_pil().save(str(thumb_path), "PNG", optimize=True)
+                except Exception as th_err:
+                    log.warning("Miniature register échouée : %s", th_err)
+        finally:
+            doc.close()
+
+    _write_json_atomic(ddir / "result.json", {
+        "doc_id": doc_id,
+        "filename": source_path.name,
+        "source_path": str(source_path.resolve()),
+        "extraction_mode": "registered",
+        "needs_reprocess": True,
+        "n_pages": n_pages,
+        "n_figures": 0,
+        "n_tables": 0,
+        "pdf_title": title,
+        "outline": [],
+        "figures": [],
+        "tables": [],
+        "pages": pages_info,
+    })
+    return doc_id
+
+
+@app.post("/register")
+def register(body: dict) -> JSONResponse:
+    """Référence un PDF (fichier) ou tous les PDF d'un dossier, par chemin."""
+    path_str = (body or {}).get("path", "").strip()
+    if not path_str:
+        raise HTTPException(400, "Chemin manquant")
+    path = Path(path_str)
+    if not path.exists():
+        return JSONResponse({"registered": [], "skipped": [],
+                             "errors": [{"path": path_str, "reason": "not_found"}]})
+
+    registered: list[str] = []
+    skipped: list[dict[str, str]] = []
+    errors: list[dict[str, str]] = []
+
+    def _try(f: Path) -> None:
+        try:
+            if f.suffix.lower() != ".pdf":
+                errors.append({"path": str(f), "reason": "invalid_extension"})
+                return
+            doc_id = _path_doc_id(f)
+            if (_doc_dir(doc_id) / "result.json").exists():
+                skipped.append({"path": str(f), "reason": "already_registered"})
+            else:
+                registered.append(_register_pdf(f))
+        except Exception as e:
+            errors.append({"path": str(f), "reason": str(e)})
+
+    if path.is_file():
+        _try(path)
+    elif path.is_dir():
+        for f in sorted(path.glob("*.pdf")):
+            if f.is_file() and not f.name.startswith("."):
+                _try(f)
+    else:
+        errors.append({"path": path_str, "reason": "invalid_type"})
+
+    return JSONResponse({"registered": registered, "skipped": skipped, "errors": errors})
+
+
+@app.get("/register/preview")
+def register_preview(path: str) -> JSONResponse:
+    """Compte les PDF d'un dossier (ou valide un fichier) avant référencement."""
+    if not path.strip():
+        raise HTTPException(400, "Chemin manquant")
+    p = Path(path)
+    if not p.exists():
+        return JSONResponse({"pdf_count": 0, "pdfs": [], "exists": False})
+    if p.is_file():
+        ok = p.suffix.lower() == ".pdf"
+        return JSONResponse({"pdf_count": 1 if ok else 0, "pdfs": [p.name] if ok else [], "exists": True})
+    pdfs = sorted(f.name for f in p.glob("*.pdf") if f.is_file() and not f.name.startswith("."))
+    return JSONResponse({"pdf_count": len(pdfs), "pdfs": pdfs[:50], "exists": True})
+
+
+@app.post("/doc/{doc_id}/process")
+async def process_doc(doc_id: str, background_tasks: BackgroundTasks) -> JSONResponse:
+    """Lance l'analyse Docling complète d'un document référencé (copie en cache)."""
+    ddir = _doc_dir(doc_id)
+    source = _resolve_source(doc_id)
+    if source is None or not source.exists():
+        raise HTTPException(404, "Fichier source introuvable")
+
+    with tasks_lock:
+        task = active_tasks.get(doc_id)
+        if task:
+            return JSONResponse({"doc_id": doc_id, **task})
+
+    is_pdf = source.suffix.lower() == ".pdf"
+    # Copie le fichier référencé dans le cache (si externe) pour l'analyse
+    local_source = ddir / ("source.pdf" if is_pdf else f"source{source.suffix.lower()}")
+    if source.resolve() != local_source.resolve():
+        try:
+            shutil.copy2(str(source), str(local_source))
+        except OSError as e:
+            raise HTTPException(500, f"Impossible de copier le fichier source : {e}")
+    source = local_source
+
+    # Conserve le nom de fichier d'origine (stocké au référencement)
+    filename = source.name
+    try:
+        with open(ddir / "result.json", encoding="utf-8") as f:
+            filename = json.load(f).get("filename", source.name)
+    except (OSError, json.JSONDecodeError):
+        pass
+    (ddir / "error.json").unlink(missing_ok=True)
+
+    with tasks_lock:
+        active_tasks[doc_id] = {"status": "processing", "progress": 0,
+                                "message": "Démarrage de l'analyse du document..."}
+    background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, filename, is_pdf)
+    return JSONResponse({"doc_id": doc_id, "status": "processing", "progress": 0,
+                         "message": "Analyse ajoutée à la file d'attente..."})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
