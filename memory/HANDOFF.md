@@ -8,6 +8,21 @@
 
 ## 0. ÉTAT ACTUEL — branche `develop` (MAJ 2026-06-04)
 
+> 🚨 **À LIRE EN PREMIER — changement de base de travail.**
+> **N'utilise plus `feature/v2-tables-reader-ocr`** (elle est `behind 48` commits,
+> larguée et non rebasable proprement). La nouvelle base d'intégration synchronisée
+> est **`develop`**, qui est désormais EN AVANCE sur v2 (la PR #5 a été découpée et
+> mergée sur `main` en Phase 5, puis le reste portable repris sur `develop` en
+> Phase 6 / PRs #26→#32). En début de session :
+> ```
+> git fetch origin
+> git checkout develop && git pull --ff-only origin develop
+> git checkout -b feature/ma-tache   # toujours créer tes branches DEPUIS develop
+> ```
+> Détail Git : tes commits sont signés `sadjikun <hadylimz@gmail.com>`, ce qui n'est
+> pas l'identité du repo. Configure `git config user.name`/`user.email` côté ta
+> machine pour une attribution correcte sur les prochaines PRs.
+
 > ⚠️ Les sections 1-4 ci-dessous datent du **2026-05-25** et décrivent la branche
 > v2 d'origine (FIX-033→068, Reader câblé, fast path, de-embedding). **Pour
 > travailler sur `develop`, lire d'abord cette section + `cache-schema.md` +
