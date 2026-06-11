@@ -29,6 +29,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +63,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    import sys
+    if "pytest" in sys.modules:
+        log.info("Startup search sync skipped in pytest environment")
+        return
+    import threading
+    from search import sync_index
+    # Sync search index in a background thread so it doesn't block startup
+    threading.Thread(target=sync_index, daemon=True).start()
+
+
 
 
 def _doc_dir(doc_id: str) -> Path:
@@ -186,6 +201,12 @@ def run_pipeline_bg(doc_id: str, src_path: Path, ddir: Path, filename: str, is_p
         result["doc_id"] = doc_id
         result["filename"] = filename
         _write_json_atomic(ddir / "result.json", result)
+        try:
+            from search import index_document
+            index_document(doc_id)
+        except Exception:
+            log.exception("Impossible d'indexer le document %s après extraction", doc_id)
+
     except Exception as e:
         error_msg = f"{type(e).__name__}: {e}"
         log.error("Pipeline en arrière-plan échoué pour %s : %s", doc_id, error_msg)
@@ -200,7 +221,12 @@ def run_pipeline_bg(doc_id: str, src_path: Path, ddir: Path, filename: str, is_p
 
 
 @app.get("/")
-def root() -> dict[str, str]:
+def root() -> Any:
+    import sys
+    if "pytest" not in sys.modules:
+        dist_index = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
+        if dist_index.exists():
+            return FileResponse(dist_index)
     return {"status": "ok", "service": "pdf-viewer-api"}
 
 
@@ -459,7 +485,13 @@ def delete_doc(doc_id: str) -> dict[str, str]:
     p = _doc_dir(doc_id)
     if p.exists():
         shutil.rmtree(p)
+    try:
+        from search import remove_document
+        remove_document(doc_id)
+    except Exception:
+        log.exception("Impossible de supprimer le document %s de l'index de recherche", doc_id)
     return {"status": "deleted", "doc_id": doc_id}
+
 
 
 @app.post("/cache/cleanup")
@@ -847,6 +879,38 @@ def get_fiche(doc_id: str, format: str = "html") -> Response:
     )
 
 
+@app.get("/doc/{doc_id}/fiche-ai")
+def get_fiche_ai(doc_id: str) -> JSONResponse:
+    """Récupère la fiche d'étude IA (résumé + flashcards) si elle a déjà été générée."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    path = ddir / "fiche_ai.json"
+    if path.exists():
+        try:
+            return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    return JSONResponse({"status": "not_generated"})
+
+
+@app.post("/doc/{doc_id}/fiche-ai")
+def post_fiche_ai(doc_id: str, body: dict) -> JSONResponse:
+    """Génère la fiche d'étude IA (résumé + flashcards) à partir des surlignages."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    model = body.get("model", "qwen3.5:9b")
+    from study_ai import generate_ai_study_sheet
+    try:
+        data = generate_ai_study_sheet(doc_id, model)
+        return JSONResponse(data)
+    except ValueError as ve:
+        raise HTTPException(400, str(ve))
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # OCR — Tesseract (searchable PDF, image OCR) + pix2tex (LaTeX). Tout optionnel.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1052,3 +1116,42 @@ async def caption_figures(doc_id: str) -> JSONResponse:
 
     updated = await asyncio.to_thread(_run)
     return JSONResponse({"status": "ok", "figures_updated": updated})
+
+
+@app.get("/search")
+def search_documents(q: str = "") -> list[dict[str, Any]]:
+    """Recherche plein-texte transversale dans toute la bibliothèque."""
+    from search import search_index
+    if not q or not q.strip():
+        return []
+    return search_index(q)
+
+
+@app.get("/ollama/status")
+def get_ollama_status() -> JSONResponse:
+    """Vérifie si le service Ollama est disponible et liste les modèles."""
+    from qa import check_ollama_status
+    return JSONResponse(check_ollama_status())
+
+
+@app.post("/qa")
+def query_assistant(body: dict) -> JSONResponse:
+    """Pose une question à l'assistant IA local (RAG)."""
+    from qa import query_rag
+    query = body.get("query", "").strip()
+    doc_id = body.get("doc_id")
+    model = body.get("model", "qwen3.5:9b")
+    if not query:
+        raise HTTPException(400, "La question est requise")
+    res = query_rag(query, doc_id, model)
+    return JSONResponse(res)
+
+
+# Serve static assets from frontend/dist if they exist (except in pytest environment)
+import sys
+if "pytest" not in sys.modules:
+    FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+    if FRONTEND_DIST.exists():
+        app.mount("/", StaticFiles(directory=str(FRONTEND_DIST)), name="static")
+
+

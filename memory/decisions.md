@@ -124,6 +124,20 @@ Logique serveur isolée et testée dans `launcher_core.py` ; coquille GUI dans `
 **Raison :** expérience « app » native ; pywebview et pystray se disputent la boucle GUI principale
 → window-only ; WebView2 bundlé pour une machine fraîche. *Fait évoluer le launcher pystray (WIP).*
 
-**Conséquences :** dépend du runtime WebView2 (mitigé par le bundle). Toujours pas standalone :
-nécessite `.venv` + `node_modules` (le launcher lance `uvicorn` + `npm run dev`). Le packaging
-« frontend statique servi par FastAPI » de D1 reste à faire.
+**Conséquences :** dépend du runtime WebView2 (mitigé par le bundle). Le packaging « frontend statique servi par FastAPI » (D1) a été implémenté : lorsque `frontend/dist` existe, FastAPI sert l'application directement à la racine, évitant de lancer le serveur de dev Node/Vite en production.
+
+---
+
+## ADR-008 — Téléchargement des modèles ML au premier lancement (Lazy Loading)
+
+**Contexte :** L'application utilise plusieurs modèles de Machine Learning locaux (Docling pour la structure et les tableaux, Florence-2 pour le légendage d'images, et pix2tex/texify pour le LaTeX-OCR). Bundler ces modèles dans l'installateur Windows (one-click) augmenterait la taille de l'exécutable à plus de 1,2 Go.
+
+**Décision :** Ne pas bundler les modèles dans l'installateur. Ils seront téléchargés automatiquement en tâche de fond (lazy loading) lors de leur premier appel réel (Docling lors de la première extraction de document, Florence-2 lors du premier légendage de figures, etc.).
+
+**Alternatives rejetées :**
+- **Tout bundler dans l'installateur** : Rejeté pour éviter un livrable massif (> 1,2 Go) et complexe à distribuer, alors que certains utilisateurs n'activeront pas toutes les options (ex. le légendage Florence-2).
+
+**Conséquences :**
+- L'installateur reste très léger (~27 Mo) et facile à distribuer.
+- Une connexion Internet est requise uniquement lors de la première exécution de chaque traitement concerné.
+- Temps de démarrage du premier traitement allongé de 30-90s (barre de progression rotative dans le frontend avec des hints explicatifs sur le chargement initial). Les exécutions suivantes sont 100% locales et rapides.

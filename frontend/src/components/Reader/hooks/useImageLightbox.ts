@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { RefObject } from 'react';
 import type { Figure } from '../../../types';
 
@@ -7,7 +7,7 @@ export function useImageLightbox(contentRef: RefObject<HTMLDivElement | null>) {
   const [readerImages, setReaderImages] = useState<Figure[]>([]);
 
   // Collect all images in the current reader view
-  const getReaderImages = (): Figure[] => {
+  const getReaderImages = useCallback((): Figure[] => {
     const el = contentRef.current;
     if (!el) return [];
     const imgs = el.querySelectorAll("img");
@@ -27,7 +27,7 @@ export function useImageLightbox(contentRef: RefObject<HTMLDivElement | null>) {
       });
     });
     return list;
-  };
+  }, [contentRef]);
 
   // Image lightbox (click to zoom)
   useEffect(() => {
@@ -51,7 +51,7 @@ export function useImageLightbox(contentRef: RefObject<HTMLDivElement | null>) {
     };
     el.addEventListener("click", handler);
     return () => el.removeEventListener("click", handler);
-  }, [contentRef]);
+  }, [contentRef, getReaderImages]);
 
   // Escape key to close lightbox
   useEffect(() => {

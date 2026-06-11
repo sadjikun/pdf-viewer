@@ -8,23 +8,24 @@
 
 ## 0. ÉTAT ACTUEL — branche `develop` (MAJ 2026-06-11)
 
-> 🚨 **À LIRE EN PREMIER — Phase 1 Terminée.**
-> **La Phase 1 (Confiance)** est désormais entièrement complétée.
-> Les travaux sur cette phase ont livré :
-> - **L1/L2 bibliothèque et étude** : dossiers/matières/tags et persistance locale via `study.json` dans chaque répertoire de cache.
-> - **Q1/Q2 tests** : ajout de `test_smoke.py` (21 tests, 24 routes de main.py couvertes) ; correction de la signature `/outline` en `list[dict]` ; Vitest frontend configuré pour passer sur `develop`.
+> 🚨 **À LIRE EN PREMIER — Phase 1 Terminée & Phase 2 AI1 Complétée.**
+> **La Phase 1 (Confiance)** et la **Phase 2 AI1 (Recherche transversale)** sont désormais entièrement complétées.
+> Les travaux récents ont livré :
+> - **L1/L2 bibliothèque et étude** : dossiers/matières/tags et persistance locale via `study.json`.
+> - **Q1/Q2 tests** : ajout de `test_smoke.py` (24 routes couvertes), correction `/outline` et Vitest ok.
+> - **AI1 Recherche transversale** : recherche plein-texte offline-first sur toute la bibliothèque via SQLite FTS5 (avec tokenizer `unicode61` gérant les accents). Indexation page par page pour les PDFs (avec BeautifulSoup) et globale pour les formats génériques. Interface utilisateur premium dans la bibliothèque avec double champ de recherche, onglets Documents/Extraits et snippets cliquables pour ouvrir directement le document à la page correspondante.
 > - **Reprocess** : `study.json` et `annotations.json` exclus de la purge de retraitement.
 > 
 > Tout commit doit être fait depuis `develop`.
 
-**Présent sur develop** : async + polling, Library (avec filtrage matières/dossiers/tags et badges d'étude), 10 thèmes, Reader Markdown/HTML (hooks extraits dans `hooks/` mais non câblés dans MarkdownReader.tsx), multi-format MarkItDown, OCR (Tesseract/pix2tex/Texify), Florence-2 captioning, annotations + fiche (R11/R12), PWA, launcher pywebview Windows, cleanup/thumbnail/reprocess(force_ocr), bibliothèque documentaire (`extraction_mode:"registered"`).
+**Présent sur develop** : moteur de recherche plein-texte (FTS5), async + polling, Library (avec filtrage matières/dossiers/tags, badges d'étude et recherche de contenu), 10 thèmes, Reader Markdown/HTML (hooks extraits dans `hooks/` mais non câblés dans MarkdownReader.tsx), multi-format MarkItDown, OCR (Tesseract/pix2tex/Texify), Florence-2 captioning, annotations + fiche (R11/R12), PWA, launcher pywebview Windows, cleanup/thumbnail/reprocess(force_ocr), bibliothèque documentaire (`extraction_mode:"registered"`).
 
 **Absent de develop** (présent sur la branche v2) : fast path pypdfium2
 (`_extraire_natif`), de-embedding images (`/html-image`), `/health`, `/app-mode`
 (à refactorer — lecture env figée à l'import), endpoint benchmark, Reader câblé aux hooks,
 ModeChooser, son installeur production complet.
 
-**Prochaines pistes** : Lancer la Phase 2 — Intelligence (indexation locale et Q&A IA local), câbler les hooks dans MarkdownReader, et éventuellement ré-introduire le de-embedding.
+**Prochaines pistes** : Attaquer la Phase 2 — AI2 (Q&A IA locale "Interroge tes documents"), câbler les hooks dans MarkdownReader, et éventuellement ré-introduire le de-embedding.
 
 ---
 

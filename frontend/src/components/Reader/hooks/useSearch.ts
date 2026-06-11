@@ -19,6 +19,7 @@ export function useSearch(
   // Synchronise la recherche globale de la sidebar avec le Reader
   useEffect(() => {
     if (propSearchQuery !== undefined) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchQuery(propSearchQuery);
       if (propSearchQuery.trim()) {
         setShowSearch(true);

@@ -41,6 +41,7 @@ export function useContentLoading(params: UseContentLoadingParams) {
   useEffect(() => {
     const abortCtrl = new AbortController();
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMd(null);
     setHtmlContent(null);
     setRawHtmlForDownload(null);

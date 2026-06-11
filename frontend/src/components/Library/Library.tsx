@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { figureUrl, thumbnailUrl } from "../../api";
-import type { LibraryDocument, LibraryFailure, LibraryTask } from "../../types";
+import { useEffect, useMemo, useState } from "react";
+import { figureUrl, searchContent, thumbnailUrl } from "../../api";
+import type { LibraryDocument, LibraryFailure, LibraryTask, SearchHit } from "../../types";
 import { UploadZone } from "../Upload/UploadZone";
 import "./Library.css";
 
@@ -13,7 +13,7 @@ interface Props {
   lastDocId: string | null;
   loading: boolean;
   error: string | null;
-  onOpen: (docId: string) => void;
+  onOpen: (docId: string, pageNumber?: number) => void;
   onDelete: (docId: string) => void;
   onUpload: (file: File) => void;
   onRefresh: () => void;
@@ -53,6 +53,41 @@ export function Library({
   onProcess,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [contentQuery, setContentQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"documents" | "content">("documents");
+
+  // Debounced search for content
+  useEffect(() => {
+    const q = contentQuery.trim();
+    if (!q) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearchHits([]);
+      setSearchError(null);
+      setActiveTab("documents");
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      setSearchError(null);
+      try {
+        const hits = await searchContent(q);
+        setSearchHits(hits);
+        setActiveTab("content");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setSearchError(message);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [contentQuery]);
+
   const [sort, setSort] = useState<SortKey>("recent");
   const [regPath, setRegPath] = useState("");
   const [regBusy, setRegBusy] = useState(false);
@@ -431,12 +466,27 @@ export function Library({
         )}
 
         <section className="library-controls" aria-label="Filtres bibliothèque">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Rechercher un document"
-            className="library-search"
-          />
+          <div className="library-search-inputs">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Rechercher par titre/méta..."
+              className="library-search"
+            />
+            <div className="library-content-search-container">
+              <input
+                value={contentQuery}
+                onChange={(event) => setContentQuery(event.target.value)}
+                placeholder="Rechercher dans le texte..."
+                className="library-search library-search-content"
+              />
+              {searchLoading && (
+                <span className="library-search-spinner" aria-hidden="true">
+                  ⌛
+                </span>
+              )}
+            </div>
+          </div>
           <div className="library-segments">
             <button type="button" className={mode === "all" ? "is-active" : ""} onClick={() => setMode("all")}>
               Tous
@@ -455,26 +505,83 @@ export function Library({
           </select>
         </section>
 
-        <section className="library-grid-section" aria-label="Catalogue">
-          {filtered.length > 0 ? (
-            <div className="library-grid">
-              {filtered.map((doc) => (
-                <DocumentCard
-                  key={doc.doc_id}
-                  doc={doc}
-                  isLast={doc.doc_id === lastDocId}
-                  onOpen={onOpen}
-                  onDelete={onDelete}
-                  onProcess={onProcess}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="library-empty-state">
-              <UploadZone onFile={onUpload} disabled={loading} />
-            </div>
-          )}
-        </section>
+        {contentQuery.trim() && (
+          <div className="library-tabs">
+            <button
+              type="button"
+              className={`library-tab-btn-main ${activeTab === "documents" ? "is-active" : ""}`}
+              onClick={() => setActiveTab("documents")}
+            >
+              Documents ({filtered.length})
+            </button>
+            <button
+              type="button"
+              className={`library-tab-btn-main ${activeTab === "content" ? "is-active" : ""}`}
+              onClick={() => setActiveTab("content")}
+            >
+              Extraits ({searchHits.length})
+            </button>
+          </div>
+        )}
+
+        {activeTab === "content" && contentQuery.trim() ? (
+          <section className="library-search-hits-section">
+            {searchLoading ? (
+              <div className="library-search-loading">Recherche en cours dans le texte...</div>
+            ) : searchError ? (
+              <div className="library-search-error">{searchError}</div>
+            ) : searchHits.length > 0 ? (
+              <div className="library-search-hits-list">
+                {searchHits.map((hit, idx) => (
+                  <div
+                    key={`${hit.doc_id}-${hit.page_number}-${idx}`}
+                    className="library-search-hit-card"
+                    onClick={() => onOpen(hit.doc_id, hit.page_number)}
+                  >
+                    <div className="library-search-hit-header">
+                      <span className="library-search-hit-title" title={hit.title}>
+                        📄 {hit.title}
+                      </span>
+                      <span className="library-search-hit-page">
+                        Page {hit.page_number}
+                      </span>
+                    </div>
+                    <p
+                      className="library-search-hit-snippet"
+                      dangerouslySetInnerHTML={{ __html: hit.snippet }}
+                    />
+                    <div className="library-search-hit-footer">
+                      <small className="library-search-hit-filename">{hit.filename}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="library-search-empty">Aucun extrait trouvé pour &ldquo;{contentQuery}&rdquo;</div>
+            )}
+          </section>
+        ) : (
+          <section className="library-grid-section" aria-label="Catalogue">
+            {filtered.length > 0 ? (
+              <div className="library-grid">
+                {filtered.map((doc) => (
+                  <DocumentCard
+                    key={doc.doc_id}
+                    doc={doc}
+                    isLast={doc.doc_id === lastDocId}
+                    onOpen={onOpen}
+                    onDelete={onDelete}
+                    onProcess={onProcess}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="library-empty-state">
+                <UploadZone onFile={onUpload} disabled={loading} />
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="library-register" aria-label="Référencer des PDF par chemin">
           <label className="library-register-label" htmlFor="reg-path">

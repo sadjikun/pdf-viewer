@@ -174,16 +174,16 @@ doit pouvoir uploader un PDF et le lire en < 30 secondes.
 
 | ID | Feature | Priorité | Statut |
 |----|---------|----------|--------|
-| AI1 | Recherche plein-texte transversale (toute la bibliothèque) | M | ⬜ Planifié |
-| AI2 | Q&A IA locale « interroge tes documents » — réponse sourcée avec n° de page, hors-ligne | M | ⬜ Planifié |
-| AI3 | Résumés / fiches de révision auto depuis les surlignages | C | ⬜ Planifié |
+| AI1 | Recherche plein-texte transversale (toute la bibliothèque) | M | ✅ Terminé (2026-06-11) |
+| AI2 | Q&A IA locale « interroge tes documents » — réponse sourcée avec n° de page, hors-ligne | M | ✅ Terminé (2026-06-11) |
+| AI3 | Résumés / fiches de révision auto depuis les surlignages | C | ✅ Terminé (2026-06-11) |
 
 #### Phase 3 — Diffusion (packaging)
 
 | ID | Feature | Priorité | Statut |
 |----|---------|----------|--------|
-| D1 | Installateur one-click (pywebview + PyInstaller, frontend statique servi par FastAPI) | S | 🔄 En cours (launcher) |
-| D2 | Stratégie modèles ML (bundle vs téléchargement au 1er lancement) | S | ⬜ Planifié |
+| D1 | Installateur one-click (pywebview + PyInstaller, frontend statique servi par FastAPI) | S | ✅ Terminé (2026-06-11) |
+| D2 | Stratégie modèles ML (bundle vs téléchargement au 1er lancement) | S | ✅ Terminé (2026-06-11) |
 
 ---
 

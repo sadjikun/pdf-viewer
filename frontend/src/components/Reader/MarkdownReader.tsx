@@ -20,6 +20,7 @@ import "highlight.js/styles/atom-one-dark.css";
 
 // Hooks
 import { useAppearance } from "./hooks/useAppearance";
+import type { FontSize, LineHeight } from "./hooks/useAppearance";
 import { useImageLightbox } from "./hooks/useImageLightbox";
 import { usePdfPageSync } from "./hooks/usePdfPageSync";
 import { useSearch } from "./hooks/useSearch";
@@ -1107,7 +1108,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   <input
                     type="range" min="0" max="4" step="1"
                     value={["sm","md","lg","xl","xxl"].indexOf(fontSize)}
-                    onChange={(e) => setFontSize((["sm","md","lg","xl","xxl"] as any[])[parseInt(e.target.value)])}
+                    onChange={(e) => setFontSize((["sm","md","lg","xl","xxl"] as FontSize[])[parseInt(e.target.value)])}
                     style={{ flex: 1, accentColor: "var(--or)" }}
                   />
                   <span style={{ fontSize: "16px", color: "var(--tx2)" }}>A</span>
@@ -1116,7 +1117,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                 {/* Line height */}
                 <div className="reader-pop-label" style={{ marginTop: "10px" }}>Interligne</div>
                 <div className="reader-lh-row">
-                  {([["compact","≡",1.6],["normal","≡",1.85],["relaxed","≡",2.2]] as any[]).map(([val, icon]) => (
+                  {([["compact","≡",1.6],["normal","≡",1.85],["relaxed","≡",2.2]] as [LineHeight, string, number][]).map(([val, icon]) => (
                     <button
                       key={val}
                       className={`reader-lh-btn${lineHeight === val ? " is-on" : ""}`}

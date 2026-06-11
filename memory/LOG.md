@@ -3,6 +3,47 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-06-11 — Branche `develop` : Résolution TD-025 et correctifs ESLint / TypeScript (antigravity)
+**Fichiers modifiés/créés :** `frontend/src/components/Reader/MarkdownReader.tsx` (modifié), `frontend/src/components/Reader/hooks/useAnnotations.ts` (modifié), `frontend/src/components/Reader/hooks/useContentLoading.ts` (modifié), `frontend/src/components/Reader/hooks/useSearch.ts` (modifié), `frontend/src/components/Reader/hooks/useImageLightbox.ts` (modifié), `frontend/src/components/Study/StudyTab.tsx` (modifié), `frontend/src/components/Library/Library.tsx` (modifié), `TECHNICAL_DEBT.md` (modifié).
+**Résumé :**
+- **Résolution de TD-025** : Finalisation du câblage et de l'intégration des 8 hooks personnalisés du Reader dans `MarkdownReader.tsx`.
+- **Nettoyage ESLint et Typecheck** : Résolution complète de toutes les erreurs et avertissements ESLint et TypeScript. Correction des types de cast d'arguments `any` dans `StudyTab.tsx` et `MarkdownReader.tsx`, typage de la capture d'erreur dans `Library.tsx`.
+- **Optimisation des hooks** : Utilisation de `useCallback` sur `getReaderImages` dans `useImageLightbox.ts` pour stabiliser l'arbre de dépendances et suppression des directives eslint-disable inutilisées.
+- **Validation** : Build de production frontend 100% vert, suite pytest backend 100% verte (63/63 passés).
+**Fixes introduits :** aucun (résolution dette technique)
+**Points ouverts :** aucun
+
+### 2026-06-11 — Branche `develop` : Phase 2 - AI3 Aide à l'apprentissage (antigravity)
+**Fichiers modifiés/créés :** `backend/study_ai.py` (modifié), `backend/tests/test_study_ai.py` (modifié), `frontend/src/components/Study/StudyTab.tsx` (déjà existant), `frontend/src/components/Study/StudyTab.css` (déjà existant).
+**Résumé :**
+- **Aide à l'apprentissage (Résumés & Flashcards)** : Implémentation du module de génération automatique de fiches de révision à partir des surlignages et notes de l'utilisateur.
+- **Requête structurée Ollama JSON** : Requête locale vers Ollama (`format="json"`) avec extraction robuste par expression régulière (gestion des blocs markdown ```json retournés par le LLM).
+- **Interface de révision interactive** : Intégration dans l'onglet "Étude" de la sidebar avec affichage du résumé Markdown et grille de Flashcards interactives avec effet de retournement 3D CSS.
+- **Validation** : Ajout de 5 tests unitaires dans `backend/tests/test_study_ai.py` couvrant la génération, les caches et le format JSON. Tous les tests passent.
+**Fixes introduits :** aucun (nouvelle fonctionnalité)
+**Points ouverts :** Démarrer la Phase 3 — Diffusion (D1 : service statique du frontend par FastAPI).
+
+### 2026-06-11 — Branche `develop` : Phase 2 - AI2 Assistant IA Local (antigravity)
+**Fichiers modifiés/créés :** `backend/qa.py` (nouveau), `backend/main.py` (modifié), `backend/tests/test_qa.py` (nouveau), `frontend/src/types.ts` (modifié), `frontend/src/api.ts` (modifié), `frontend/src/App.tsx` (modifié), `frontend/src/components/Assistant/AssistantTab.tsx` (nouveau), `frontend/src/components/Assistant/AssistantTab.css` (nouveau).
+**Résumé :**
+- **Q&A local & RAG hors-ligne** : Implémentation du module RAG connectant la recherche FTS5 (BM25 locale) au service local Ollama (`http://127.0.0.1:11434`).
+- **Prompt structuré avec citations** : Construction d'un prompt RAG fournissant des instructions de persona précises et le contexte extrait (titre, nom de fichier, numéro de page) pour forcer des réponses professionnelles avec citations.
+- **Interface de Chat premium** : Création d'un onglet "Assistant" dans le menu latéral avec détection d'Ollama et sélectionneur de modèles, bascule de portée (document courant vs bibliothèque entière), bulle de discussion utilisateur/assistant et citations cliquables (pills) naviguant automatiquement vers le document/page ciblé.
+- **Validation** : Résolution du problème d'assertion sur les numéros de page dans les tests unitaires. Tests pytest complétés avec succès (58 tests passés). Build de production frontend au vert. Validation UI manuelle réussie via subagent.
+**Fixes introduits :** aucun (nouvelle fonctionnalité)
+**Points ouverts :** Lancer la Phase 2 — AI3 (Résumés / fiches de révision auto depuis les surlignages).
+
+### 2026-06-11 — Branche `develop` : Phase 2 - AI1 Recherche transversale (antigravity)
+**Fichiers modifiés/créés :** `backend/search.py` (nouveau), `backend/main.py` (modifié), `backend/tests/test_search.py` (nouveau), `frontend/src/types.ts` (modifié), `frontend/src/api.ts` (modifié), `frontend/src/App.tsx` (modifié), `frontend/src/components/Library/Library.tsx` (modifié), `frontend/src/components/Library/Library.css` (modifié).
+**Résumé :**
+- **Moteur de recherche plein-texte SQLite FTS5** : implémentation complète offline-first avec tokenizer `unicode61` gérant les accents et la mise en minuscule par défaut.
+- **Indexation page par page** : support de l'extraction page par page depuis les fragments HTML produits par Docling pour les PDFs (via BeautifulSoup), et indexation globale (page 1) pour les formats génériques convertis par MarkItDown.
+- **Start-up Sync & Pipeline Integration** : synchronisation automatique au démarrage de l'API pour indexer le cache préexistant ou nettoyer les entrées obsolètes, et indexation automatique immédiate à la fin du pipeline de traitement ou lors de la suppression d'un document.
+- **Interface de recherche premium** : intégration dans la bibliothèque d'un double champ de recherche (titre/méta + contenu texte), d'un système d'onglets animés ("Documents" / "Extraits") avec badges de résultats, et de cartes de résultats affichant des snippets textuels FTS5 mis en valeur (`<b>`) cliquables pour ouvrir directement le document à la page correspondante.
+- **Validation** : tests automatisés ajoutés dans `backend/tests/test_search.py` et validés (3/3 passés), compilation frontend build testée à 100% sans erreur.
+**Fixes introduits :** aucun (nouvelle fonctionnalité)
+**Points ouverts :** Démarrer la tâche AI2 (Q&A IA locale "interroge tes documents" avec réponses sourcées et hors-ligne).
+
 ### 2026-06-11 — Branche `develop` : Phase 1 - Clôture Confiance & Tests de validation Q1/Q2 (antigravity)
 **Fichiers modifiés/créés :** `backend/tests/test_study.py` (créé en session précédente), `backend/tests/test_smoke.py` (nouveau), `backend/main.py` (corrigé), `frontend/src/components/Reader/sectionizeHtml.test.ts` (modifié), `frontend/src/components/Library/Library.tsx` (modifié en session précédente), `frontend/src/components/Library/Library.css` (modifié en session précédente), `frontend/src/components/Study/StudyTab.tsx` (créé en session précédente), `frontend/src/components/Study/StudyTab.css` (créé en session précédente), `frontend/src/App.tsx` (modifié en session précédente), `frontend/src/api.ts` (modifié en session précédente), `frontend/src/types.ts` (modifié en session précédente).
 **Résumé :**

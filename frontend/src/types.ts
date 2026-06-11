@@ -148,3 +148,62 @@ export interface AnnotationStore {
   notes: Record<string, string>;
   saved_at: number;
 }
+
+export interface SearchHit {
+  doc_id: string;
+  title: string;
+  filename: string;
+  page_number: number;
+  snippet: string;
+}
+
+export interface QARequest {
+  query: string;
+  doc_id?: string;
+  model: string;
+}
+
+export interface QASource {
+  doc_id: string;
+  title: string;
+  filename: string;
+  page_number: number;
+  snippet: string;
+}
+
+export interface QAResponse {
+  answer: string;
+  sources: QASource[];
+}
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+}
+
+export interface OllamaStatus {
+  available: boolean;
+  models: OllamaModel[];
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: "user" | "assistant";
+  text: string;
+  sources?: QASource[];
+  timestamp: number;
+}
+
+export interface Flashcard {
+  question: string;
+  answer: string;
+}
+
+export interface FicheAIResponse {
+  summary: string;
+  flashcards: Flashcard[];
+  status?: "not_generated";
+}
+
+
+

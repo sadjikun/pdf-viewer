@@ -64,7 +64,7 @@ grâce à une IA **locale**.
 
 | ID | Livrable | Détail | Prio |
 |----|----------|--------|------|
-| AI1 | **Recherche transversale** | Recherche plein-texte sur **toute** la bibliothèque (le texte est déjà extrait). Quick win, peu coûteux. | M |
+| AI1 ✅ | **Recherche transversale** | Recherche plein-texte sur **toute** la bibliothèque (le texte est déjà extrait). Quick win, peu coûteux. | M |
 | AI2 | **« Interroge tes documents » (Q&A IA locale)** | Embeddings locaux + LLM local (Ollama / llama.cpp). Question en français → réponse **sourcée avec le n° de page**. 100 % hors-ligne. | M |
 | AI3 | **Aide à l'apprentissage** *(stretch)* | Génération de résumés et de fiches de révision (flashcards) à partir des surlignages. | C |
 
@@ -92,8 +92,8 @@ machines (ou par un collègue), sans toucher à Python ni Node.
 
 | ID | Livrable | Détail | Prio |
 |----|----------|--------|------|
-| D1 | **Installateur one-click** 🔄 | Launcher **fenêtre pywebview** + splash + ModeChooser + icône livre faits (2026-05-29, ADR-007). Reste : build frontend statique servi par FastAPI pour un vrai standalone. | S |
-| D2 | **Stratégie modèles ML** | Décider : bundler les modèles (lourd : Florence-2, pix2tex ~400 Mo, Docling) **vs** télécharger au premier lancement. | S |
+| D1 | **Installateur one-click** ✅ | Launcher **fenêtre pywebview** + splash + ModeChooser + icône livre. Frontend statique servi par FastAPI (2026-06-11, D1/ADR-007). | S |
+| D2 | **Stratégie modèles ML** ✅ | Décision prise : Lazy loading et téléchargement automatique en tâche de fond lors du premier traitement (2026-06-11, D2/ADR-008). | S |
 
 **Pourquoi en dernier :** on empaquette quand l'ensemble est stable. Packager une cible
 mouvante est du travail perdu. (Le launcher pywebview actuel suffit comme solution
@@ -123,7 +123,7 @@ une GED d'entreprise.
 | Phase | Statut |
 |-------|--------|
 | Phase 1 — Confiance | ✅ Terminée (2026-06-11) — L1/L2/R11/R12/Q1/Q2 |
-| Phase 2 — Intelligence | ⬜ À démarrer |
-| Phase 3 — Diffusion | 🔄 En cours — launcher fenêtre pywebview ✅ ; packaging statique restant |
+| Phase 2 — Intelligence | ✅ Terminée (2026-06-11) — AI1/AI2/AI3 |
+| Phase 3 — Diffusion | ✅ Terminée (2026-06-11) — D1/D2 |
 
 > Mettre à jour ce tableau et `phases.md` à chaque livrable terminé. Légende priorité (M/S/C/W) : voir `PRD.md` §3.

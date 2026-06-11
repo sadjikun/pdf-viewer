@@ -192,3 +192,343 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* AI Study Section Divider */
+.study-divider {
+  height: 1px;
+  background: var(--ui-border);
+  margin: 8px 0;
+  border: none;
+}
+
+.study-ai-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.study-ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.study-ai-header h4 {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.study-generating-badge {
+  font-size: 11px;
+  color: var(--or);
+  background: rgba(255, 140, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  animation: study-pulse 1.5s infinite;
+}
+
+/* Warnings & Empty States */
+.study-ai-warning,
+.study-ai-empty {
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--ui-border);
+  font-size: 12px;
+  color: var(--tx2);
+  line-height: 1.4;
+}
+
+.study-ai-warning {
+  border-color: rgba(255, 165, 0, 0.2);
+  background: rgba(255, 165, 0, 0.02);
+}
+
+.study-ai-warning .warning-title {
+  display: block;
+  font-weight: 600;
+  color: var(--or);
+  margin-bottom: 4px;
+}
+
+.study-ai-empty p {
+  margin: 0;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Ready to Generate Prompt */
+.study-ai-prompt {
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(94, 155, 255, 0.03);
+  border: 1px solid rgba(94, 155, 255, 0.1);
+  font-size: 12px;
+  color: var(--tx);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.study-ai-prompt p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.study-ai-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.study-model-select-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.study-model-select-wrapper label {
+  font-size: 11px;
+  color: var(--tx2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.study-model-select-wrapper .study-select {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.study-ai-btn {
+  background: var(--or);
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.2s;
+  text-align: center;
+}
+
+.study-ai-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Loading state */
+.study-ai-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  text-align: center;
+  gap: 12px;
+}
+
+.study-ai-loading p {
+  font-size: 12px;
+  color: var(--tx2);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Generated content layout */
+.study-ai-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.study-ai-content-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -8px;
+}
+
+.study-ai-regenerate-wrapper {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.study-select-sm {
+  padding: 4px 6px;
+  font-size: 11px;
+  height: 26px;
+}
+
+.study-ai-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--ui-border);
+  color: var(--tx2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  height: 26px;
+  transition: all 0.2s;
+}
+
+.study-ai-btn-secondary:hover {
+  border-color: var(--or);
+  color: var(--tx);
+  background: rgba(255, 140, 0, 0.05);
+}
+
+/* Summary Card */
+.study-ai-summary-card {
+  background: var(--bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.study-ai-summary-card h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx);
+  border-bottom: 1px solid var(--ui-border);
+  padding-bottom: 4px;
+}
+
+.study-ai-summary-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--tx);
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.study-ai-summary-text p {
+  margin: 0 0 8px 0;
+}
+
+.study-ai-summary-text p:last-child {
+  margin-bottom: 0;
+}
+
+.study-ai-summary-text ul, 
+.study-ai-summary-text ol {
+  margin: 0 0 8px 0;
+  padding-left: 16px;
+}
+
+.study-ai-summary-text li {
+  margin-bottom: 4px;
+}
+
+/* Flashcards Section */
+.study-ai-flashcards-section h5 {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx);
+}
+
+.study-help-text {
+  font-size: 10px;
+  color: var(--tx2);
+  margin: 0 0 10px 0;
+  font-style: italic;
+}
+
+.study-flashcards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 3D Flashcard styles */
+.study-flashcard-card {
+  background-color: transparent;
+  width: 100%;
+  height: 110px;
+  perspective: 1000px;
+  cursor: pointer;
+}
+
+.study-flashcard-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+/* Flip animation when is-revealed class is toggled */
+.study-flashcard-card.is-revealed .study-flashcard-inner {
+  transform: rotateY(180deg);
+}
+
+.study-flashcard-front, 
+.study-flashcard-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden; /* Safari */
+  backface-visibility: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.study-flashcard-front {
+  background-color: var(--bg);
+  color: var(--tx);
+}
+
+.study-flashcard-front:hover {
+  border-color: var(--or);
+  background-color: rgba(255, 140, 0, 0.01);
+}
+
+.study-flashcard-back {
+  background-color: rgba(255, 140, 0, 0.04);
+  border-color: var(--or);
+  color: var(--tx);
+  transform: rotateY(180deg);
+}
+
+.study-flashcard-tag {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--muted, #8a8f99);
+  margin-bottom: 6px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.study-flashcard-back .study-flashcard-tag {
+  color: var(--or);
+}
+
+.study-flashcard-front p,
+.study-flashcard-back p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+

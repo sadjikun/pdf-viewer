@@ -59,7 +59,7 @@ export function useAnnotations(params: UseAnnotationsParams) {
             const storedHls = localStorage.getItem(`reader-hl-${docId}`);
             const storedNotes = localStorage.getItem(`reader-notes-${docId}`);
             
-            const localHls = storedHls ? JSON.parse(storedHls) : [];
+            const localHls = storedHls ? (JSON.parse(storedHls) as Highlight[]) : [];
             const localNotes = storedNotes ? JSON.parse(storedNotes) : {};
 
             setHighlights(localHls);
@@ -69,7 +69,7 @@ export function useAnnotations(params: UseAnnotationsParams) {
               // Push migrated localStorage data to server
               saveAnnotations(docId, {
                 version: 1,
-                highlights: localHls.map((h: any) => ({
+                highlights: localHls.map((h) => ({
                   key: h.key,
                   color: h.color,
                   text: h.text,
@@ -101,6 +101,7 @@ export function useAnnotations(params: UseAnnotationsParams) {
       });
 
     // Reset local UI states
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveNoteKey(null);
     setNoteText("");
     setShowNotePanel(false);

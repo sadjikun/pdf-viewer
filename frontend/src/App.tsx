@@ -6,6 +6,7 @@ import { Library } from "./components/Library/Library";
 import { LoadingDocling } from "./components/Loading/LoadingDocling";
 import { Outline } from "./components/Outline/Outline";
 import { SearchBar } from "./components/Search/SearchBar";
+import { AssistantTab } from "./components/Assistant/AssistantTab";
 import { Tables } from "./components/Tables/Tables";
 import type { ViewerHandle } from "./components/Viewer/Viewer";
 
@@ -24,12 +25,13 @@ import { StudyTab } from "./components/Study/StudyTab";
 
 const LS_KEY = "pdf-viewer:lastDocId";
 const THEME_KEY = "pdf-viewer:theme";
-type Tab = "outline" | "gallery" | "tables" | "study";
+type Tab = "outline" | "gallery" | "tables" | "study" | "assistant";
 const TAB_TITLES: Record<Tab, string> = {
   outline: "Sommaire",
   gallery: "Galerie",
   tables: "Tables",
   study: "Étude",
+  assistant: "Assistant",
 };
 
 const THEMES = [
@@ -177,7 +179,7 @@ function App() {
     getLibrary().then(setLibrary).catch(() => {});
   }, []);
 
-  const openDocument = useCallback(async (docId: string) => {
+  const openDocument = useCallback(async (docId: string, pageNumber?: number) => {
     stopPolling(); // annule un éventuel polling en cours (analyse/reprocess d'un autre doc)
     setError(null);
     setLoading(true);
@@ -186,6 +188,11 @@ function App() {
       setDoc(result);
       setLastDocId(docId);
       localStorage.setItem(LS_KEY, docId);
+      if (pageNumber != null) {
+        setTimeout(() => {
+          viewerRef.current?.scrollToPage(pageNumber);
+        }, 300); // 300ms delay to ensure DOM is ready
+      }
     } catch (e) {
       if (e instanceof ApiError) setError(`[${e.status}] ${e.message}`);
       else setError("Impossible d'ouvrir le document.");
@@ -555,6 +562,15 @@ function App() {
           >
             Étude
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "assistant"}
+            className={`app-tab${tab === "assistant" ? " is-active" : ""}`}
+            onClick={() => setTab("assistant")}
+          >
+            Assistant
+          </button>
         </div>
         {tab === "outline" ? (
           <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
@@ -562,8 +578,10 @@ function App() {
           <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} onCaption={handleCaptionFigures} />
         ) : tab === "tables" ? (
           <Tables tables={doc.tables ?? []} onGotoPage={gotoPage} />
-        ) : (
+        ) : tab === "study" ? (
           <StudyTab docId={doc.doc_id} onMetadataChange={refreshLibrary} />
+        ) : (
+          <AssistantTab docId={doc.doc_id} gotoPage={gotoPage} openDocument={openDocument} />
         )}
       </aside>
       <main className="app-main">

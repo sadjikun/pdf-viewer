@@ -1,4 +1,4 @@
-import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse, RegisterPreview, RegisterResult, StudyMetadata } from "./types";
+import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse, RegisterPreview, RegisterResult, StudyMetadata, SearchHit, QARequest, QAResponse, OllamaStatus, FicheAIResponse } from "./types";
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -177,3 +177,46 @@ export async function saveStudyMetadata(
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
   return res.json();
 }
+
+export async function searchContent(query: string): Promise<SearchHit[]> {
+  const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function queryQA(req: QARequest): Promise<QAResponse> {
+  const res = await fetch(`${API_BASE}/qa`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function getOllamaStatus(): Promise<OllamaStatus> {
+  const res = await fetch(`${API_BASE}/ollama/status`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function getFicheAI(docId: string): Promise<FicheAIResponse | null> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/fiche-ai`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  const data = await res.json();
+  if (data.status === "not_generated") return null;
+  return data;
+}
+
+export async function generateFicheAI(docId: string, model: string): Promise<FicheAIResponse> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/fiche-ai`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+
+
