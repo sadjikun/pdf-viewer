@@ -1,36 +1,38 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import katex from "katex";
-import { htmlUrl, htmlManifestUrl, htmlPartUrl, markdownUrl, API_BASE } from "../../api";
-import type { HtmlManifestEntry, OutlineNode, Figure } from "../../types";
+import { API_BASE } from "../../api";
+import type { OutlineNode } from "../../types";
 import { FigureOverlay } from "../Figure/FigureOverlay";
 import {
-  sectionizeHtml,
-  parseMdSections,
   matchSection,
   flattenOutline,
-  extractPaperMeta,
-  highlightTextInElement,
   removeAllHighlights,
-  cleanPdfTitle,
+  highlightTextInElement,
 } from "./readerHtml";
-import type { Section, PaperMeta, Highlight } from "./readerHtml";
 import "./MarkdownReader.css";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/atom-one-dark.css";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Hooks
+import { useAppearance } from "./hooks/useAppearance";
+import { useImageLightbox } from "./hooks/useImageLightbox";
+import { usePdfPageSync } from "./hooks/usePdfPageSync";
+import { useSearch } from "./hooks/useSearch";
+import { useTts } from "./hooks/useTts";
+import { useFocusMode } from "./hooks/useFocusMode";
+import { useContentLoading } from "./hooks/useContentLoading";
+import { useAnnotations } from "./hooks/useAnnotations";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ReaderTheme = "reading" | "article" | "report" | "interactive" | "cstb";
 
-/** Imperative handle exposed via ref — used for synchronized compare mode */
 export interface ReaderHandle {
-  /** Scroll to the section matching `title` (no focus activation) */
   scrollToSection(title: string): void;
 }
 
@@ -58,43 +60,179 @@ interface Props {
   appTheme?: AppTheme;
   isDark?: boolean;
   onDarkChange?: (d: boolean) => void;
-  /** Appelé quand l'utilisateur fait défiler le Reader et qu'une nouvelle page PDF devient visible.
-   *  Permet la synchronisation Reader → PDF Viewer (sens inverse de handlePageChange). */
   onPageChange?: (page: number) => void;
-  /** Vrai uniquement en mode Compare — affiche les séparateurs de pages PDF et la barre de nav.
-   *  En mode Reader seul le contenu coule librement sans structure de pagination PDF. */
   compareMode?: boolean;
   searchQuery?: string;
 }
-
-
-type FontSize = "sm" | "md" | "lg" | "xl" | "xxl";
-type LineHeight = "compact" | "normal" | "relaxed";
-type FontFamily = "serif" | "sans";
-
-
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   props: Props,
   ref,
 ) => {
-  const { docId, filename, pdfTitle, outline, theme, onThemeChange, focusSectionTitle, onFocusClear, appTheme, onPageChange, compareMode = false, searchQuery: propSearchQuery } = props;
-  // FIX-026 : ref pour éviter la boucle infinie Reader → PDF → Reader lors des scrolls programmatiques.
-  // scrollToSection/scrollToPage positionne ce flag à true ; le scroll handler ne propagera pas
-  // onPageChange pendant la durée de l'animation (≈ 600 ms).
-  const isProgrammaticScrollRef = useRef(false);
-  const [md, setMd] = useState<string | null>(null);
-  const [htmlContent, setHtmlContent] = useState<string | null>(null);
-  const [rawHtmlForDownload, setRawHtmlForDownload] = useState<string | null>(null);
-  const [sections, setSections] = useState<Section[]>([]);
-  const [words, setWords] = useState(0);
-  const [stats, setStats] = useState({ nFigures: 0, nTables: 0, nFormulas: 0 });
-  const [htmlAvailable, setHtmlAvailable] = useState(false);
-  const [htmlTooLarge, setHtmlTooLarge] = useState(false);  // FIX-034 : HTML > seuil → markdown
-  const [renderMode, setRenderMode] = useState<"html" | "md">("md");
-  // isDark : synchronisé sur le prop global isDark, sinon local
+  const {
+    docId,
+    filename,
+    pdfTitle,
+    outline,
+    theme,
+    onThemeChange,
+    focusSectionTitle,
+    onFocusClear,
+    appTheme,
+    onPageChange,
+    compareMode = false,
+    searchQuery: propSearchQuery,
+  } = props;
+
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 1. Appearance Hook
+  const {
+    fontSize,
+    setFontSize,
+    lineHeight,
+    setLineHeight,
+    fontFamily,
+    setFontFamily,
+    readerZoom,
+    setReaderZoom,
+    showZoomPop,
+    setShowZoomPop,
+    pageMode,
+    setPageMode,
+    showTypoPop,
+    setShowTypoPop,
+  } = useAppearance();
+
+  // 2. Image Lightbox Hook
+  const {
+    readerImageIdx,
+    setReaderImageIdx,
+    readerImages,
+  } = useImageLightbox(contentRef);
+
+  // 3. PDF Page Sync Hook
+  const {
+    pdfPageNos,
+    setPdfPageNos,
+    currentPdfPage,
+    progress,
+    showJumpTop,
+    breadcrumb,
+    setBreadcrumb,
+    activeSid,
+    isProgrammaticScrollRef,
+    scrollToPage,
+    goPrevPage,
+    goNextPage,
+  } = usePdfPageSync({
+    contentRef,
+    renderMode: "html", // sync scrolling uses HTML mode markers
+    compareMode,
+    onPageChange,
+    sections: [], // initialized dynamically
+  });
+
+  // 4. Content Loading Hook
+  const {
+    md,
+    htmlContent,
+    rawHtmlForDownload,
+    sections,
+    words,
+    stats,
+    htmlAvailable,
+    htmlTooLarge,
+    renderMode,
+    setRenderMode,
+    error,
+    paperMeta,
+  } = useContentLoading({
+    docId,
+    filename,
+    pdfTitle,
+    outline,
+    setBreadcrumb,
+    setPdfPageNos,
+  });
+
+  // 5. Focus Mode Hook
+  const {
+    focusSid,
+    focusIdx,
+    visibleHtml,
+    goFocus,
+    exitFocus,
+  } = useFocusMode({
+    focusSectionTitle,
+    onFocusClear,
+    sections,
+    renderMode,
+    htmlContent,
+    outline,
+    paperMeta,
+    contentRef,
+    setBreadcrumb,
+  });
+
+  // 6. Search Hook
+  const {
+    showSearch,
+    setShowSearch,
+    searchQuery,
+    setSearchQuery,
+    searchCount,
+    setSearchCount,
+    searchIdx,
+    setSearchIdx,
+    searchInputRef,
+  } = useSearch(contentRef, propSearchQuery, visibleHtml);
+
+  // 7. Text-To-Speech Hook
+  const [showTtsPop, setShowTtsPop] = useState(false);
+  const {
+    ttsActive,
+    ttsPaused,
+    ttsRate,
+    setTtsRate,
+    handlePlayTTS,
+    handlePauseTTS,
+    handleStopTTS,
+    getSpeakText,
+  } = useTts(contentRef);
+
+  // 8. Annotations Hook
+  const {
+    hlMode,
+    setHlMode,
+    hlColor,
+    setHlColor,
+    highlights,
+    notes,
+    activeNoteKey,
+    setActiveNoteKey,
+    noteText,
+    setNoteText,
+    showNotePanel,
+    setShowNotePanel,
+    showHlPop,
+    setShowHlPop,
+    handleMouseUp,
+    handleContentClick,
+    handleSaveNote,
+    handleDeleteHighlight,
+    clearAllAnnotations,
+  } = useAnnotations({
+    docId,
+    visibleHtml,
+    renderMode,
+    contentRef,
+    setShowTypoPop,
+    setShowTtsPop,
+    setShowZoomPop,
+  });
+
+  // Theme synchronization
   const darkThemes: AppTheme[] = ["oled", "forest"];
   const [localIsDark, setLocalIsDark] = useState(
     () => appTheme ? darkThemes.includes(appTheme)
@@ -103,7 +241,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
   const isDark = props.isDark !== undefined ? props.isDark : localIsDark;
   const setIsDark = props.onDarkChange !== undefined ? props.onDarkChange : setLocalIsDark;
 
-  // Mettre à jour isDark quand appTheme change
   useEffect(() => {
     if (appTheme) {
       const isDarkTheme = appTheme === "glassmorphism" || appTheme === "technical" || appTheme === "oled";
@@ -111,453 +248,42 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appTheme]);
-  const [fontSize, setFontSize] = useState<FontSize>("md");
-  const [lineHeight, setLineHeight] = useState<LineHeight>("normal");
-  const [fontFamily, setFontFamily] = useState<FontFamily>("sans");
-  const [focusSid, setFocusSid] = useState<string | null>(null);
-  const [focusIdx, setFocusIdx] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [showJumpTop, setShowJumpTop] = useState(false);
-  const [showTypoPop, setShowTypoPop] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [paperMeta, setPaperMeta] = useState<PaperMeta | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState<string>(() =>
-    cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document")
-  );
-  const [readerImageIdx, setReaderImageIdx] = useState<number | null>(null);
-  const [readerImages, setReaderImages] = useState<Figure[]>([]);
-  const [showMiniToc, setShowMiniToc] = useState(false);
-  const [activeSid, setActiveSid] = useState<string | null>(null);
-  const [readerZoom, setReaderZoom] = useState(100);
-  const [showZoomPop, setShowZoomPop] = useState(false);
 
-  // ── Search state ────────────────────────────────────────────────────────────
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchCount, setSearchCount] = useState(0);
-  const [searchIdx, setSearchIdx] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Synchronise la recherche globale de la sidebar avec le Reader
+  // Keyboard Shortcuts
   useEffect(() => {
-    if (propSearchQuery !== undefined) {
-      setSearchQuery(propSearchQuery);
-      if (propSearchQuery.trim()) {
-        setShowSearch(true);
-      } else {
-        setShowSearch(false);
-        setSearchCount(0);
-      }
-    }
-  }, [propSearchQuery]);
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as Element)?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
 
-  // ── PDF page navigation state (FIX-016) ─────────────────────────────────────
-  const [pdfPageNos, setPdfPageNos] = useState<number[]>([]);
-  const [currentPdfPage, setCurrentPdfPage] = useState(1);
-  const [pageMode, setPageMode] = useState(false); // one-page-at-a-time toggle
-
-  // ── Surlignage & Notes & TTS State ──────────────────────────────────────────
-  const [hlMode, setHlMode] = useState(false);
-  const [hlColor, setHlColor] = useState("#ffe066");
-  const [highlights, setHighlights] = useState<Highlight[]>([]);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
-  const [noteText, setNoteText] = useState("");
-  const [showNotePanel, setShowNotePanel] = useState(false);
-  const [showHlPop, setShowHlPop] = useState(false);
-  const [showTtsPop, setShowTtsPop] = useState(false);
-
-  const [ttsRate, setTtsRate] = useState(1.0);
-  const [ttsActive, setTtsActive] = useState(false);
-  const [ttsPaused, setTtsPaused] = useState(false);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-
-  const contentRef = useRef<HTMLDivElement>(null);
-  const readingMinutes = Math.max(1, Math.round(words / 250));
-
-  // ── Derived HTML ─────────────────────────────────────────────────────────
-  // En mode focus : masquer tout sauf la section active
-  const visibleHtml = useMemo(() => {
-    if (!htmlContent) return null;
-    const styles: string[] = [];
-    // Hide rs_pre if paper card is shown (avoids duplicate title/abstract)
-    if (paperMeta?.title) {
-      styles.push(`section[data-sid="rs_pre"]{display:none!important}`);
-    }
-    // Focus mode: hide all sections except the active one AND its sub-sections
-    if (focusSid) {
-      const n = (s: string) => s.toLowerCase().replace(/\W+/g, "");
-      const visibleSids: string[] = [focusSid];
-      const focusedTitle = sections[focusIdx]?.title ?? "";
-
-      // Try to find the node and all its descendants in the outline tree
-      let descendantTitles: Set<string> | null = null;
-      if (outline && outline.length > 0) {
-        // Helper to normalize and collect descendant titles
-        const collectDescendantTitles = (node: OutlineNode, set: Set<string>) => {
-          set.add(n(node.title));
-          const stripped = n(node.title.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
-          if (stripped) set.add(stripped);
-          if (node.children) {
-            for (const child of node.children) {
-              collectDescendantTitles(child, set);
-            }
-          }
-        };
-
-        const searchOutline = (nodes: OutlineNode[]): Set<string> | null => {
-          for (const node of nodes) {
-            const nodeNorm = n(node.title);
-            const focusNorm = n(focusedTitle);
-            const strippedNode = n(node.title.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
-            const strippedFocus = n(focusedTitle.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
-            if (
-              nodeNorm === focusNorm || 
-              (strippedNode && strippedNode === focusNorm) ||
-              (strippedFocus && nodeNorm === strippedFocus)
-            ) {
-              const set = new Set<string>();
-              collectDescendantTitles(node, set);
-              return set;
-            }
-            if (node.children && node.children.length > 0) {
-              const res = searchOutline(node.children);
-              if (res) return res;
-            }
-          }
-          return null;
-        };
-
-        descendantTitles = searchOutline(outline);
-      }
-
-      if (descendantTitles && descendantTitles.size > 0) {
-        // Outline-based hierarchy: include any section whose title matches a descendant
-        for (let i = focusIdx + 1; i < sections.length; i++) {
-          const titleNorm = n(sections[i].title);
-          const strippedTitle = n(sections[i].title.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, ""));
-          if (descendantTitles.has(titleNorm) || (strippedTitle && descendantTitles.has(strippedTitle))) {
-            visibleSids.push(sections[i].id);
-          }
+      if (e.key === "Escape") {
+        if (readerImageIdx !== null) { setReaderImageIdx(null); return; }
+        if (showSearch) { setShowSearch(false); setSearchQuery(""); setSearchCount(0); return; }
+        if (focusSid) {
+          exitFocus();
         }
-      } else {
-        // Fallback: heading-level based boundary
-        for (let i = focusIdx + 1; i < sections.length; i++) {
-          if (sections[i].level <= (sections[focusIdx]?.level ?? 1)) break;
-          visibleSids.push(sections[i].id);
-        }
+        return;
       }
 
-      styles.push(`section[data-sid]{display:none!important}`);
-      const showList = visibleSids.map((sid) => `section[data-sid="${sid}"]`).join(",");
-      styles.push(`${showList}{display:block!important}`);
-    }
-    return styles.length
-      ? htmlContent + `<style>${styles.join("")}</style>`
-      : htmlContent;
-  }, [htmlContent, focusSid, focusIdx, sections, paperMeta, outline]);
-
-  // Load highlights & notes when docId changes
-  useEffect(() => {
-    if (!docId) return;
-    try {
-      const storedHls = localStorage.getItem(`reader-hl-${docId}`);
-      setHighlights(storedHls ? JSON.parse(storedHls) : []);
-
-      const storedNotes = localStorage.getItem(`reader-notes-${docId}`);
-      setNotes(storedNotes ? JSON.parse(storedNotes) : {});
-    } catch (e) {
-      console.error("Error reading highlights/notes from localStorage", e);
-    }
-    setBreadcrumb(cleanPdfTitle(pdfTitle) || (filename ? filename.replace(/\.[^.]+$/, "") : "Document"));
-    // Clean up TTS when changing document
-    window.speechSynthesis.cancel();
-    setTtsActive(false);
-    setTtsPaused(false);
-  }, [docId, filename, pdfTitle]);
-
-  // Reapply highlights to the DOM when visibleHtml, highlights, notes, or renderMode change
-  useEffect(() => {
-    if (renderMode !== "html" || !contentRef.current) return;
-    const docEl = contentRef.current.querySelector<HTMLElement>(".reader-doc");
-    if (!docEl) return;
-
-    const timer = setTimeout(() => {
-      removeAllHighlights(docEl);
-      highlights.forEach((hl) => {
-        const hasNote = !!notes[hl.key];
-        highlightTextInElement(docEl, hl.text, hl.color, hl.key, hasNote);
-      });
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [visibleHtml, highlights, notes, renderMode]);
-
-  // Clean up TTS on component unmount
-  useEffect(() => {
-    return () => {
-      window.speechSynthesis.cancel();
-    };
-  }, []);
-
-  // ── In-reader search: inject/remove <mark> elements ──────────────────────
-  useEffect(() => {
-    const doc = contentRef.current?.querySelector<HTMLElement>(".reader-doc");
-    if (!doc) return;
-
-    const timer = setTimeout(() => {
-      // Remove existing marks (unwrap them to restore text nodes)
-      doc.querySelectorAll("mark.reader-sm").forEach((m) => {
-        const parent = m.parentNode;
-        if (!parent) return;
-        parent.replaceChild(document.createTextNode(m.textContent ?? ""), m);
-        parent.normalize();
-      });
-
-      const query = searchQuery.trim().toLowerCase();
-      if (!query) { setSearchCount(0); return; }
-
-      const SKIP = new Set(["SCRIPT", "STYLE", "MARK", "NOSCRIPT"]);
-      const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) => {
-          const p = node.parentElement;
-          return p && SKIP.has(p.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-        },
-      });
-
-      const textNodes: Text[] = [];
-      let node: Node | null;
-      while ((node = walker.nextNode())) {
-        if ((node as Text).textContent?.toLowerCase().includes(query)) {
-          textNodes.push(node as Text);
-        }
+      if (e.key === "j" && focusSid && renderMode === "html") {
+        goFocus(focusIdx + 1);
+        e.preventDefault();
       }
-
-      let count = 0;
-      textNodes.forEach((tn) => {
-        const text = tn.textContent ?? "";
-        const lower = text.toLowerCase();
-        const frag = document.createDocumentFragment();
-        let pos = 0;
-        let idx = lower.indexOf(query, pos);
-        while (idx !== -1) {
-          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-          const mark = document.createElement("mark");
-          mark.className = "reader-sm";
-          mark.dataset.mid = String(count++);
-          mark.textContent = text.slice(idx, idx + query.length);
-          frag.appendChild(mark);
-          pos = idx + query.length;
-          idx = lower.indexOf(query, pos);
-        }
-        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
-        tn.parentNode?.replaceChild(frag, tn);
-      });
-
-      setSearchCount(count);
-      setSearchIdx(0);
-    }, 160);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, visibleHtml]);
-
-  // Scroll to active search result
-  useEffect(() => {
-    if (!searchCount) return;
-    const mark = contentRef.current?.querySelector<HTMLElement>(`.reader-sm[data-mid="${searchIdx}"]`);
-    contentRef.current?.querySelectorAll(".reader-sm").forEach((m) => m.classList.remove("is-active"));
-    if (mark) {
-      mark.classList.add("is-active");
-      mark.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [searchIdx, searchCount]);
-
-  // Handle text selection highlighting
-  const handleMouseUp = () => {
-    if (!hlMode || renderMode !== "html") return;
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-
-    const selectedText = selection.toString().trim();
-    if (selectedText.length < 3) return;
-
-    // Check if selection is within the reader document
-    if (selection.rangeCount === 0) return;
-    let range;
-    try {
-      range = selection.getRangeAt(0);
-    } catch {
-      return;
-    }
-
-    const container = contentRef.current?.querySelector(".reader-doc");
-    if (!container || !container.contains(range.commonAncestorContainer)) return;
-
-    const key = selectedText.slice(0, 50).toLowerCase().replace(/\s+/g, " ");
-
-    // Check if already highlighted
-    if (highlights.some(h => h.key === key)) {
-      selection.removeAllRanges();
-      return;
-    }
-
-    const newHl: Highlight = {
-      text: selectedText,
-      color: hlColor,
-      key: key
-    };
-
-    const nextHls = [...highlights, newHl];
-    setHighlights(nextHls);
-    localStorage.setItem(`reader-hl-${docId}`, JSON.stringify(nextHls));
-
-    // Clear selection
-    selection.removeAllRanges();
-
-    // Automatically open the note panel for the new highlight
-    setActiveNoteKey(key);
-    setNoteText("");
-    setShowNotePanel(true);
-  };
-
-  // Event delegation to capture clicks on highlights
-  const handleContentClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-
-    // Check if clicked a highlight span
-    const hlSpan = target.closest(".reader-hl");
-    if (hlSpan) {
-      e.stopPropagation();
-      const key = hlSpan.getAttribute("data-key");
-      if (key) {
-        setActiveNoteKey(key);
-        setNoteText(notes[key] || "");
-        setShowNotePanel(true);
+      if (e.key === "k" && focusSid && renderMode === "html") {
+        goFocus(focusIdx - 1);
+        e.preventDefault();
       }
-      return;
-    }
-
-    // Copy LaTeX when clicking a formula block
-    const formulaEl = target.closest(".formula, .formula-not-decoded");
-    if (formulaEl) {
-      const annotation = formulaEl.querySelector("annotation[encoding='TeX']");
-      const latex = annotation?.textContent?.trim();
-      if (latex) {
-        navigator.clipboard.writeText(latex).catch(() => {});
-        const btn = formulaEl.querySelector<HTMLElement>(".formula-copy-toast");
-        if (btn) { btn.classList.add("is-visible"); setTimeout(() => btn.classList.remove("is-visible"), 1200); }
-      }
-      return;
-    }
-
-    // Close popups if clicking elsewhere
-    setShowTypoPop(false);
-    setShowHlPop(false);
-    setShowTtsPop(false);
-    setShowZoomPop(false);
-  };
-
-  // Save the current note
-  const handleSaveNote = () => {
-    if (!activeNoteKey) return;
-    const nextNotes = { ...notes };
-    if (noteText.trim() === "") {
-      delete nextNotes[activeNoteKey];
-    } else {
-      nextNotes[activeNoteKey] = noteText.trim();
-    }
-    setNotes(nextNotes);
-    localStorage.setItem(`reader-notes-${docId}`, JSON.stringify(nextNotes));
-    setShowNotePanel(false);
-    setActiveNoteKey(null);
-    setNoteText("");
-  };
-
-  // Delete selection highlight and its note
-  const handleDeleteHighlight = () => {
-    if (!activeNoteKey) return;
-
-    const nextNotes = { ...notes };
-    delete nextNotes[activeNoteKey];
-    setNotes(nextNotes);
-    localStorage.setItem(`reader-notes-${docId}`, JSON.stringify(nextNotes));
-
-    const nextHls = highlights.filter(h => h.key !== activeNoteKey);
-    setHighlights(nextHls);
-    localStorage.setItem(`reader-hl-${docId}`, JSON.stringify(nextHls));
-
-    setShowNotePanel(false);
-    setActiveNoteKey(null);
-    setNoteText("");
-  };
-
-  // Get text for Speech Synthesis
-  const getSpeakText = (): string => {
-    if (!contentRef.current) return "";
-    const docEl = contentRef.current.querySelector(".reader-doc");
-    if (!docEl) return "";
-
-    const temp = docEl.cloneNode(true) as HTMLElement;
-    temp.querySelectorAll("script, style, .katex, annotation, math, svg").forEach(el => el.remove());
-    return temp.textContent || "";
-  };
-
-  // TTS Controls
-  const handlePlayTTS = () => {
-    if (ttsPaused) {
-      window.speechSynthesis.resume();
-      setTtsPaused(false);
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const text = getSpeakText();
-    if (!text) return;
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "fr-FR";
-    utterance.rate = ttsRate;
-
-    utterance.onend = () => {
-      setTtsActive(false);
-      setTtsPaused(false);
     };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [readerImageIdx, showSearch, focusSid, focusIdx, sections, renderMode, goFocus, exitFocus, setSearchCount, setSearchQuery, setShowSearch, setReaderImageIdx]);
 
-    utterance.onerror = () => {
-      setTtsActive(false);
-      setTtsPaused(false);
-    };
-
-    utteranceRef.current = utterance;
-    setTtsActive(true);
-    setTtsPaused(false);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const handlePauseTTS = () => {
-    if (ttsActive && !ttsPaused) {
-      window.speechSynthesis.pause();
-      setTtsPaused(true);
-    }
-  };
-
-  const handleStopTTS = () => {
-    window.speechSynthesis.cancel();
-    setTtsActive(false);
-    setTtsPaused(false);
-  };
-
-
-  // ── Imperative handle (synchronized compare mode) ─────────────────────────
+  // Imperative handle for synchronized scroll in Compare Mode
   useImperativeHandle(ref, () => ({
     scrollToSection(title: string) {
       if (!contentRef.current) return;
-      // FIX-026 : marquer le scroll comme programmatique pour ne pas propager onPageChange
-      // FIX-037 : 1 000 ms — gives smooth-scroll animation enough time to settle
       isProgrammaticScrollRef.current = true;
       setTimeout(() => { isProgrammaticScrollRef.current = false; }, 1000);
 
-      // Try to find a matching section element (data-sid) first
       if (sections.length) {
         const match = matchSection(sections, title);
         if (match) {
@@ -571,7 +297,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         }
       }
 
-      // Fallback: scroll to matching heading text
       const norm = (s: string) => s.toLowerCase().replace(/\W+/g, "");
       const target = norm(title);
       const headings = contentRef.current.querySelectorAll<HTMLElement>("h1,h2,h3,h4");
@@ -583,208 +308,99 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         }
       }
     },
-  }), [sections]);
+  }), [sections, isProgrammaticScrollRef]);
 
-  // ── Load ──────────────────────────────────────────────────────────────────
-
+  // MathML/LaTeX rendering hook
   useEffect(() => {
-    const abortCtrl = new AbortController();
+    if (renderMode !== "html" || !contentRef.current) return;
 
-    setMd(null);
-    setHtmlContent(null);
-    setRawHtmlForDownload(null);
-    setSections([]);
-    setWords(0);
-    setStats({ nFigures: 0, nTables: 0, nFormulas: 0 });
-    setHtmlAvailable(false);
-    setHtmlTooLarge(false);
-    setRenderMode("md");
-    setFocusSid(null);
-    setError(null);
-    setPaperMeta(null);
-    setBreadcrumb("Document");
+    const mathElements = contentRef.current.querySelectorAll(
+      ".formula, .equation, math, .formula-not-decoded",
+    );
+    mathElements.forEach((el) => {
+      if (el.hasAttribute("data-katex-rendered")) return;
 
-    fetch(markdownUrl(docId), { signal: abortCtrl.signal })
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
-      .then((text) => {
-        const cleanedText = text.replace(/\u200b/g, "");
-        setMd(cleanedText);
-        const secs = parseMdSections(cleanedText);
-        const w = cleanedText.split(/\s+/).filter(Boolean).length;
-        setSections((prev) => (prev.length ? prev : secs));
-        setWords((prev) => prev || w);
-      })
-      .catch((e) => {
-        if (e && e.name === "AbortError") return;
-        setError(String(e));
-      });
-
-    // Chunked HTML loading via manifest — each batch is ~10 pages, stays well under memory limits.
-    // Large base64 images are stripped before DOMParser to keep each parse fast;
-    // figures are already accessible via the Gallery sidebar.
-    // Falls back to the old single-file approach for documents without a manifest (legacy cache).
-
-    function stripLargeBase64Images(raw: string): string {
-      // Remove embedded images whose base64 payload exceeds ~100 KB.
-      // Formulas are stored as LaTeX text ($$...$$) and are unaffected.
-      return raw.replace(
-        /<img([^>]*?)src="data:image\/[^;]+;base64,[^"]{100000,}"([^>]*?)>/gi,
-        "<img$1src=\"\"$2 data-stripped=\"1\">",
-      );
-    }
-
-    function applyHtmlPart(
-      raw: string,
-      accHtml: string,
-      accSections: Section[],
-      accPdfPageNos: number[],
-      accStats: { nFigures: number; nTables: number; nFormulas: number },
-      idOffset: number,
-    ) {
-      const stripped = stripLargeBase64Images(raw);
-      const { html, sections: secs, words: w, nFigures, nTables, nFormulas, pdfPageNos } =
-        sectionizeHtml(stripped, outline ?? [], filename, idOffset, pdfTitle);
-      const newHtml = accHtml + html;
-      const newSections = [...accSections, ...secs];
-      const newPdfPageNos = [...accPdfPageNos, ...pdfPageNos.filter(p => !accPdfPageNos.includes(p))];
-      const newStats = {
-        nFigures: accStats.nFigures + nFigures,
-        nTables: accStats.nTables + nTables,
-        nFormulas: accStats.nFormulas + nFormulas,
-      };
-      return { html: newHtml, sections: newSections, pdfPageNos: newPdfPageNos, stats: newStats, words: w };
-    }
-
-    fetch(htmlManifestUrl(docId), { signal: abortCtrl.signal })
-      .then(r => r.ok ? (r.json() as Promise<HtmlManifestEntry[]>) : Promise.reject("no-manifest"))
-      .then(async (manifest) => {
-        if (!manifest.length) return Promise.reject("empty-manifest");
-
-        let accHtml = "";
-        let accSections: Section[] = [];
-        let accPdfPageNos: number[] = [];
-        let accStats = { nFigures: 0, nTables: 0, nFormulas: 0 };
-        let totalWords = 0;
-        // ID offset: space 500 section IDs per part to avoid collisions across batches
-        let idOffset = 0;
-
-        for (let i = 0; i < manifest.length; i++) {
-          if (abortCtrl.signal.aborted) break;
-          const entry = manifest[i];
-          try {
-            const partRes = await fetch(htmlPartUrl(docId, entry.start), { signal: abortCtrl.signal });
-            if (!partRes.ok) continue;
-            const raw = await partRes.text();
-            const result = applyHtmlPart(raw, accHtml, accSections, accPdfPageNos, accStats, idOffset);
-            accHtml = result.html;
-            accSections = result.sections;
-            accPdfPageNos = result.pdfPageNos;
-            accStats = result.stats;
-            if (i === 0) totalWords = result.words;
-            idOffset += 500;
-
-            // Show content as soon as first batch is ready; update silently for the rest
-            if (i === 0) {
-              if (!accHtml) { setHtmlTooLarge(true); break; }
-              setHtmlContent(accHtml);
-              setSections(accSections);
-              setWords(totalWords);
-              setStats(accStats);
-              setPdfPageNos(accPdfPageNos);
-              setHtmlAvailable(true);
-              setRenderMode("html");
-              setPaperMeta(extractPaperMeta(accHtml));
-            } else {
-              setHtmlContent(accHtml);
-              setSections(accSections);
-              setPdfPageNos(accPdfPageNos);
-              setStats(accStats);
+      let annotation: Element | null = el.querySelector("annotation");
+      let isSiblingAnnotation = false;
+      if (!annotation) {
+        let sib = el.nextSibling;
+        while (sib) {
+          if (sib.nodeType === Node.ELEMENT_NODE) {
+            if ((sib as Element).tagName.toLowerCase() === "annotation") {
+              annotation = sib as Element;
+              isSiblingAnnotation = true;
             }
-          } catch (e: unknown) {
-            if (e instanceof DOMException && e.name === "AbortError") break;
+            break;
           }
+          sib = sib.nextSibling;
         }
-        setRawHtmlForDownload(accHtml);
-      })
-      .catch((e: unknown) => {
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        // Legacy fallback: no manifest → try single result.html (FIX-034 guard still applies)
-        const HTML_SIZE_LIMIT = 20 * 1024 * 1024;
-        fetch(htmlUrl(docId), { signal: abortCtrl.signal })
-          .then((r) => {
-            if (!r.ok) throw new Error("no html");
-            const cl = parseInt(r.headers.get("content-length") ?? "0", 10);
-            if (cl > HTML_SIZE_LIMIT) { setHtmlTooLarge(true); throw new Error("too_large"); }
-            return r.text();
-          })
-          .then((raw) => {
-            if (raw.length > HTML_SIZE_LIMIT) { setHtmlTooLarge(true); return; }
-            setRawHtmlForDownload(raw);
-            const { html, sections: secs, words: w, nFigures, nTables, nFormulas, pdfPageNos } =
-              sectionizeHtml(raw, outline ?? [], filename, 0, pdfTitle);
-            if (!html) { setHtmlTooLarge(true); return; }
-            setHtmlContent(html);
-            setSections(secs);
-            setWords(w);
-            setStats({ nFigures, nTables, nFormulas });
-            setPdfPageNos(pdfPageNos);
-            setHtmlAvailable(true);
-            setRenderMode("html");
-            setPaperMeta(extractPaperMeta(html));
-          })
-          .catch(() => {});
-      });
+      }
+      let latex = annotation?.textContent?.trim();
+      if (isSiblingAnnotation && annotation) {
+        annotation.remove();
+      }
 
-    return () => abortCtrl.abort();
-  }, [docId, filename, outline]);
-
-  // ── Navigation depuis la sidebar ─────────────────────────────────────────
-  // Mode HTML  : active le focus (section isolée) + scroll en haut
-  // Mode Markdown : scroll vers le heading correspondant
-
-  useEffect(() => {
-    if (!focusSectionTitle) return;
-
-    const t = setTimeout(() => {
-      if (!contentRef.current) return;
-
-      // ── Mode HTML avec sections indexées ──────────────────────────────
-      if (renderMode === "html" && sections.length) {
-        const match = matchSection(sections, focusSectionTitle);
-        if (match) {
-          const idx = sections.indexOf(match);
-          setBreadcrumb(match.title);
-          setFocusIdx(idx);
-          setFocusSid(match.id);         // ← active le focus mode
-          contentRef.current.scrollTo({ top: 0, behavior: "smooth" });
-          // onFocusClear appelé par l'utilisateur via "← Document complet"
-          return;
+      if (!latex) {
+        const text = el.textContent?.trim();
+        if (text && (text.startsWith("$$") || text.startsWith("$") || text.startsWith("\\[") || text.startsWith("\\("))) {
+          latex = text;
         }
       }
 
-      // ── Fallback : scroll vers heading par texte (Markdown ou HTML sans sections) ──
-      const normalize = (s: string) => s.toLowerCase().replace(/\W+/g, "");
-      const target = normalize(focusSectionTitle);
-      const headings = contentRef.current.querySelectorAll<HTMLElement>("h1,h2,h3,h4");
-      for (const h of headings) {
-        const ht = normalize(h.textContent ?? "");
-        if (ht === target || ht.includes(target) || target.includes(ht)) {
-          h.scrollIntoView({ behavior: "smooth", block: "start" });
-          break;
+      if (!latex && el.classList.contains("formula-not-decoded")) {
+        const rawText = (el.textContent ?? "").trim();
+        if (rawText && rawText !== "Formula not decoded") {
+          latex = rawText.replace(/\\\\/g, "\\");
+          if (latex.startsWith("$$") && latex.endsWith("$$")) latex = latex.slice(2, -2).trim();
+          else if (latex.startsWith("$") && latex.endsWith("$")) latex = latex.slice(1, -1).trim();
         }
       }
-      onFocusClear?.();
-    }, 80);
 
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusSectionTitle]);
+      if (latex && latex !== "Formula not decoded") {
+        if (latex.startsWith("$$") && latex.endsWith("$$")) {
+          latex = latex.slice(2, -2).trim();
+        } else if (latex.startsWith("$") && latex.endsWith("$")) {
+          latex = latex.slice(1, -1).trim();
+        } else if (latex.startsWith("\\[") && latex.endsWith("\\]")) {
+          latex = latex.slice(2, -2).trim();
+        } else if (latex.startsWith("\\(") && latex.endsWith("\\)")) {
+          latex = latex.slice(2, -2).trim();
+        }
 
-  // ── KaTeX auto-render sur le HTML Docling enrichi ────────────────────────
-  // Déclenché après chaque mise à jour du HTML (htmlContent ou section focus).
-  // Rend les formules $...$ et \(...\) générées par CodeFormulaV2.
-  // Utilise un import dynamique pour éviter les erreurs de type sur le .mjs.
+        latex = latex.replace(/\u00a0/g, " ").replace(/\u200b/g, "").trim();
 
+        const container = document.createElement("span");
+        container.className = "katex-formula-rendered";
+        try {
+          const isDisplay = el.tagName === "DIV" || el.classList.contains("equation") || el.getAttribute("display") === "block";
+          katex.render(latex, container, {
+            displayMode: isDisplay,
+            output: "html",
+            throwOnError: false,
+            strict: "ignore",
+          });
+
+          if (container.querySelector(".katex-error") && el.classList.contains("formula-not-decoded")) {
+            el.setAttribute("data-katex-rendered", "true");
+            return;
+          }
+
+          if (el.tagName.toLowerCase() === "math") {
+            container.setAttribute("data-katex-rendered", "true");
+            el.replaceWith(container);
+          } else {
+            el.innerHTML = "";
+            el.appendChild(container);
+            el.setAttribute("data-katex-rendered", "true");
+          }
+        } catch (err) {
+          console.error("KaTeX rendering error:", err);
+        }
+      }
+    });
+  }, [visibleHtml, renderMode]);
+
+  // KaTeX Auto-Render on full HTML Docling
   useEffect(() => {
     if (!htmlContent || !contentRef.current) return;
     const t = setTimeout(() => {
@@ -807,339 +423,27 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
           ],
           output: "html",
           throwOnError: false,
-          // Pas d'ignoredClasses : les éléments formula-not-decoded dont le contenu
-          // a été converti en $$...$$ par pix2tex sont rendus par KaTeX.
-          // Les éléments sans délimiteurs $ sont ignorés naturellement.
         });
-      }).catch(() => {/* KaTeX auto-render absent — silencieux */});
+      }).catch(() => {});
     }, 80);
     return () => clearTimeout(t);
   }, [htmlContent, focusSid]);
 
-  // ── Scroll events: progress + jump-to-top + breadcrumb ───────────────────
-
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    let rafId = 0;
-
-    const onScroll = () => {
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        const { scrollTop, scrollHeight, clientHeight } = el;
-        const pct = scrollHeight <= clientHeight
-          ? 100
-          : (scrollTop / (scrollHeight - clientHeight)) * 100;
-        setProgress(Math.min(100, Math.round(pct)));
-        setShowJumpTop(scrollTop > 300);
-
-        if (renderMode === "html") {
-          const secs = el.querySelectorAll<HTMLElement>("section[data-sid]");
-          for (let i = secs.length - 1; i >= 0; i--) {
-            const rect = secs[i].getBoundingClientRect();
-            if (rect.top <= 80) {
-              const heading = secs[i].querySelector("h1,h2,h3,h4");
-              if (heading?.textContent) {
-                setBreadcrumb(heading.textContent.trim());
-              }
-              setActiveSid(secs[i].getAttribute("data-sid"));
-              break;
-            }
-          }
-
-          const markers = el.querySelectorAll<HTMLElement>(".pdf-page-marker[data-page]");
-          for (let i = markers.length - 1; i >= 0; i--) {
-            const rect = markers[i].getBoundingClientRect();
-            if (rect.top <= 120) {
-              const pg = parseInt(markers[i].getAttribute("data-page") ?? "0");
-              if (pg > 0) {
-                setCurrentPdfPage(pg);
-                if (!isProgrammaticScrollRef.current && onPageChange) {
-                  onPageChange(pg);
-                }
-              }
-              break;
-            }
-          }
-        }
-      });
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      cancelAnimationFrame(rafId);
-    };
-  }, [renderMode, onPageChange]);
-
-  // Collect all images in the current reader view
-  const getReaderImages = (): Figure[] => {
-    const el = contentRef.current;
-    if (!el) return [];
-    const imgs = el.querySelectorAll("img");
-    const list: Figure[] = [];
-    imgs.forEach((img) => {
-      const src = img.src || img.getAttribute("src") || "";
-      if (!src) return;
-      if (list.some((item) => item.id === src)) return;
-      const pageNoAttr = img.closest(".docling-page")?.getAttribute("data-page-no");
-      const page = pageNoAttr ? parseInt(pageNoAttr, 10) : null;
-      const captionText = img.closest("figure")?.querySelector("figcaption")?.textContent || "";
-      list.push({
-        id: src,
-        page,
-        bbox: null,
-        caption: captionText,
-      });
-    });
-    return list;
-  };
-
-  // ── Image lightbox (click to zoom) ──────────────────────────────────────
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const handler = (e: MouseEvent) => {
-      const img = (e.target as Element).closest("img") as HTMLImageElement | null;
-      if (!img) return;
-      const src = img.src || img.getAttribute("src");
-      if (src) {
-        const imgs = getReaderImages();
-        setReaderImages(imgs);
-        const idx = imgs.findIndex((item) => item.id === src);
-        if (idx !== -1) {
-          setReaderImageIdx(idx);
-        } else {
-          setReaderImages([{ id: src, page: null, bbox: null, caption: img.alt || "" }]);
-          setReaderImageIdx(0);
-        }
-      }
-    };
-    el.addEventListener("click", handler);
-    return () => el.removeEventListener("click", handler);
-  }, []);
-
-  useEffect(() => {
-    if (readerImageIdx === null) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setReaderImageIdx(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [readerImageIdx]);
-
-  // ── Keyboard shortcuts ───────────────────────────────────────────────────
-  // J/K: navigate sections in focus mode | F: toggle focus | Esc: close panels
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as Element)?.tagName ?? "";
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-
-      if (e.key === "Escape") {
-        if (readerImageIdx !== null) { setReaderImageIdx(null); return; }
-        if (showSearch) { setShowSearch(false); setSearchQuery(""); setSearchCount(0); return; }
-        if (focusSid) {
-          const sid = sections[focusIdx]?.id;
-          setFocusSid(null);
-          onFocusClear?.();
-          setTimeout(() => {
-            contentRef.current?.querySelector(`[data-sid="${sid}"]`)
-              ?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }, 50);
-        }
-        return;
-      }
-
-      if (e.key === "j" && focusSid && renderMode === "html") {
-        const nIdx = focusIdx + 1;
-        if (nIdx < sections.length) {
-          setFocusSid(sections[nIdx].id);
-          setFocusIdx(nIdx);
-          setBreadcrumb(sections[nIdx].title);
-          contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-        }
-        e.preventDefault();
-      }
-      if (e.key === "k" && focusSid && renderMode === "html") {
-        const nIdx = focusIdx - 1;
-        if (nIdx >= 0) {
-          setFocusSid(sections[nIdx].id);
-          setFocusIdx(nIdx);
-          setBreadcrumb(sections[nIdx].title);
-          contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-        }
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [readerImageIdx, showSearch, focusSid, focusIdx, sections, onFocusClear, renderMode]);
-
-  // ── PDF page navigation (FIX-016) ────────────────────────────────────────
-
-  const scrollToPage = (pageNo: number) => {
-    const el = contentRef.current;
-    if (!el) return;
-    const marker = el.querySelector<HTMLElement>(`.pdf-page-marker[data-page="${pageNo}"]`);
-    if (marker) {
-      // FIX-026 / FIX-037 : marquer comme programmatique → pas de boucle Reader → PDF
-      isProgrammaticScrollRef.current = true;
-      setTimeout(() => { isProgrammaticScrollRef.current = false; }, 1000);
-      marker.scrollIntoView({ behavior: "smooth", block: "start" });
-      setCurrentPdfPage(pageNo);
-    }
-  };
-
-  const goPrevPage = () => {
-    const idx = pdfPageNos.indexOf(currentPdfPage);
-    if (idx > 0) scrollToPage(pdfPageNos[idx - 1]);
-  };
-
-  const goNextPage = () => {
-    const idx = pdfPageNos.indexOf(currentPdfPage);
-    if (idx < pdfPageNos.length - 1) scrollToPage(pdfPageNos[idx + 1]);
-  };
-
-  // ── Focus navigation ──────────────────────────────────────────────────────
-
-  const goFocus = (idx: number) => {
-    if (idx < 0 || idx >= sections.length) return;
-    setFocusSid(sections[idx].id);
-    setFocusIdx(idx);
-    setBreadcrumb(sections[idx].title);
-    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const exitFocus = () => {
-    const sid = sections[focusIdx]?.id;
-    setFocusSid(null);
-    onFocusClear?.();
-    setTimeout(() => {
-      const el = contentRef.current?.querySelector(`[data-sid="${sid}"]`);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
-  };
-
-  // (Derived HTML moved up to resolve Temporal Dead Zone/ReferenceError)
-
-  // ── MathML/LaTeX rendering hook ──────────────────────────────────────────
-  // Extract LaTeX from <annotation encoding="TeX"> tags inside MathML or formula
-  // elements, and render them using KaTeX.
-  useEffect(() => {
-    if (renderMode !== "html" || !contentRef.current) return;
-
-    const mathElements = contentRef.current.querySelectorAll(
-      ".formula, .equation, math, .formula-not-decoded",
-    );
-    mathElements.forEach((el) => {
-      if (el.hasAttribute("data-katex-rendered")) return;
-
-      // Find the annotation tag (can be a child or a sibling due to HTML5 parser quirks)
-      let annotation: Element | null = el.querySelector("annotation");
-      let isSiblingAnnotation = false;
-      if (!annotation) {
-        let sib = el.nextSibling;
-        while (sib) {
-          if (sib.nodeType === Node.ELEMENT_NODE) {
-            if ((sib as Element).tagName.toLowerCase() === "annotation") {
-              annotation = sib as Element;
-              isSiblingAnnotation = true;
-            }
-            break;
-          }
-          sib = sib.nextSibling;
-        }
-      }
-      let latex = annotation?.textContent?.trim();
-      if (isSiblingAnnotation && annotation) {
-        annotation.remove();
-      }
-
-      // Fallback if no annotation but element contains inline/display LaTeX delimiters
-      if (!latex) {
-        const text = el.textContent?.trim();
-        if (text && (text.startsWith("$$") || text.startsWith("$") || text.startsWith("\\[") || text.startsWith("\\("))) {
-          latex = text;
-        }
-      }
-
-      // formula-not-decoded: try using the raw textContent as LaTeX.
-      // Docling sometimes stores valid LaTeX with double-escaped backslashes
-      // (\\frac instead of \frac) — unescape before passing to KaTeX.
-      if (!latex && el.classList.contains("formula-not-decoded")) {
-        const rawText = (el.textContent ?? "").trim();
-        if (rawText && rawText !== "Formula not decoded") {
-          latex = rawText.replace(/\\\\/g, "\\");
-          if (latex.startsWith("$$") && latex.endsWith("$$")) latex = latex.slice(2, -2).trim();
-          else if (latex.startsWith("$") && latex.endsWith("$")) latex = latex.slice(1, -1).trim();
-        }
-      }
-
-      if (latex && latex !== "Formula not decoded") {
-        // Strip leading/trailing delimiters if present
-        if (latex.startsWith("$$") && latex.endsWith("$$")) {
-          latex = latex.slice(2, -2).trim();
-        } else if (latex.startsWith("$") && latex.endsWith("$")) {
-          latex = latex.slice(1, -1).trim();
-        } else if (latex.startsWith("\\[") && latex.endsWith("\\]")) {
-          latex = latex.slice(2, -2).trim();
-        } else if (latex.startsWith("\\(") && latex.endsWith("\\)")) {
-          latex = latex.slice(2, -2).trim();
-        }
-
-        // Sanitize LaTeX space characters to prevent KaTeX warnings/errors
-        latex = latex.replace(/\u00a0/g, " ").replace(/\u200b/g, "").trim();
-
-        const container = document.createElement("span");
-        container.className = "katex-formula-rendered";
-        try {
-          const isDisplay = el.tagName === "DIV" || el.classList.contains("equation") || el.getAttribute("display") === "block";
-          katex.render(latex, container, {
-            displayMode: isDisplay,
-            output: "html",
-            throwOnError: false,
-            strict: "ignore", // Silences warning logs in the browser console
-          });
-
-          // Don't replace formula-not-decoded elements that failed to render —
-          // a KaTeX error span is worse than the existing styled placeholder.
-          if (container.querySelector(".katex-error") && el.classList.contains("formula-not-decoded")) {
-            el.setAttribute("data-katex-rendered", "true"); // mark so we don't retry
-            return;
-          }
-
-          if (el.tagName.toLowerCase() === "math") {
-            container.setAttribute("data-katex-rendered", "true");
-            el.replaceWith(container);
-          } else {
-            el.innerHTML = "";
-            el.appendChild(container);
-            el.setAttribute("data-katex-rendered", "true");
-          }
-        } catch (err) {
-          console.error("KaTeX rendering error:", err);
-        }
-      }
-    });
-  }, [visibleHtml, renderMode]);
-
-  // ── Download ──────────────────────────────────────────────────────────────
-
+  // Download Standalone Annotated HTML
   const downloadName = filename ? filename.replace(/\.[^.]+$/, ".html") : "document.html";
 
   const handleDownloadHTML = () => {
     if (!htmlContent) return;
 
-    // Use DOMParser to inject current highlights and notes
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlContent, "text/html");
 
-    // Clean up existing highlights in the source if any, then re-apply
     removeAllHighlights(doc.body);
     highlights.forEach((hl) => {
       const hasNote = !!notes[hl.key];
       highlightTextInElement(doc.body, hl.text, hl.color, hl.key, hasNote);
     });
 
-    // Resolve relative image URLs to absolute backend URLs in the exported HTML
     doc.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src") ?? "";
       if (src.startsWith("/doc/")) {
@@ -1149,7 +453,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
 
     const title = paperMeta?.title || filename || "Document";
 
-    // Inline CSS for the interactive features & styling themes in the exported HTML
     const styles = `
       :root {
         --or: #ff8c00;
@@ -1248,7 +551,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         text-align: justify;
         margin-bottom: 16px;
       }
-      /* KaTeX formulas */
       annotation {
         display: none !important;
       }
@@ -1261,7 +563,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         overflow-x: auto;
         border-radius: 8px;
       }
-      /* Table styling */
       table {
         width: 100%;
         border-collapse: collapse;
@@ -1280,7 +581,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
       tr:nth-child(even) td {
         background: var(--bg3);
       }
-      /* Note panel styling for offline */
       #note-panel {
         position: fixed;
         bottom: 24px;
@@ -1344,8 +644,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         font-weight: 600;
         font-family: inherit;
       }
-
-      /* PDF Page markers */
       .pdf-page-marker {
         margin: 52px 0 0;
         user-select: none;
@@ -1386,8 +684,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         height: 2px;
         background: linear-gradient(90deg, transparent, var(--bd2) 20%, var(--bd2) 80%, transparent);
       }
-
-      /* Print Media Styles */
       @media print {
         @page {
           size: A4 portrait;
@@ -1476,7 +772,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
           panel.style.display = 'none';
         });
 
-        // Toggle theme
         const themeBtn = document.getElementById('theme-btn');
         let currentTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', currentTheme);
@@ -1556,9 +851,11 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     URL.revokeObjectURL(url);
   };
 
-
+  const readingMinutes = Math.max(1, Math.round(words / 250));
   const currentSection = sections.find((s) => s.id === focusSid);
   const inFocus = focusSid !== null && renderMode === "html";
+
+  const [showMiniToc, setShowMiniToc] = useState(false);
 
   const docClasses = [
     "reader",
@@ -1570,8 +867,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
     appTheme ? `reader--app-${appTheme}` : "",
     compareMode ? "reader--compare" : "",
   ].filter(Boolean).join(" ");
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className={docClasses} data-theme={isDark ? "dark" : "light"} data-app-theme={appTheme ?? "glassmorphism"}>
@@ -1621,7 +916,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         {/* Right: controls */}
         <div className="reader-toolbar-group reader-toolbar-group--right">
 
-          {/* PDF Page navigation — compare mode only (FIX-016) */}
+          {/* PDF Page navigation — compare mode only */}
           {compareMode && renderMode === "html" && pdfPageNos.length > 0 && (
             <div className="reader-page-nav">
               <button
@@ -1632,7 +927,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
               >‹</button>
               <button
                 className={`reader-tbtn reader-page-counter${pageMode ? " is-on" : ""}`}
-                onClick={() => setPageMode(v => !v)}
+                onClick={() => setPageMode(!pageMode)}
                 title={pageMode ? "Quitter le mode page" : "Mode page à page"}
               >
                 <span>p.{currentPdfPage}</span>
@@ -1655,7 +950,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                 style={hlMode ? { borderColor: hlColor, backgroundColor: `color-mix(in srgb, ${hlColor} 20%, transparent)` } : undefined}
                 onClick={() => {
                   setHlMode(!hlMode);
-                  setShowHlPop(v => !v);
+                  setShowHlPop(!showHlPop);
                   setShowTypoPop(false);
                   setShowTtsPop(false);
                   setShowZoomPop(false);
@@ -1695,14 +990,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                     className="reader-pop-action-btn"
                     onClick={() => {
                       if (window.confirm("Voulez-vous supprimer tous les surlignages de ce document ?")) {
-                        if (contentRef.current) {
-                          const docEl = contentRef.current.querySelector(".reader-doc");
-                          if (docEl) removeAllHighlights(docEl as HTMLElement);
-                        }
-                        setHighlights([]);
-                        setNotes({});
-                        localStorage.removeItem(`reader-hl-${docId}`);
-                        localStorage.removeItem(`reader-notes-${docId}`);
+                        clearAllAnnotations();
                         setShowHlPop(false);
                       }
                     }}
@@ -1720,7 +1008,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
               <button
                 className={`reader-tbtn${ttsActive ? " is-on" : ""}`}
                 onClick={() => {
-                  setShowTtsPop(v => !v);
+                  setShowTtsPop(!showTtsPop);
                   setShowTypoPop(false);
                   setShowHlPop(false);
                   setShowZoomPop(false);
@@ -1780,17 +1068,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                             const utterance = new SpeechSynthesisUtterance(text);
                             utterance.lang = "fr-FR";
                             utterance.rate = newRate;
-                            utterance.onend = () => {
-                              setTtsActive(false);
-                              setTtsPaused(false);
-                            };
-                            utterance.onerror = () => {
-                              setTtsActive(false);
-                              setTtsPaused(false);
-                            };
-                            utteranceRef.current = utterance;
-                            setTtsActive(true);
-                            setTtsPaused(false);
                             window.speechSynthesis.speak(utterance);
                           }, 50);
                         }
@@ -1809,7 +1086,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
             <button
               className={`reader-tbtn${showTypoPop ? " is-on" : ""}`}
               onClick={() => {
-                setShowTypoPop((v) => !v);
+                setShowTypoPop(!showTypoPop);
                 setShowHlPop(false);
                 setShowTtsPop(false);
                 setShowZoomPop(false);
@@ -1830,7 +1107,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   <input
                     type="range" min="0" max="4" step="1"
                     value={["sm","md","lg","xl","xxl"].indexOf(fontSize)}
-                    onChange={(e) => setFontSize((["sm","md","lg","xl","xxl"] as FontSize[])[parseInt(e.target.value)])}
+                    onChange={(e) => setFontSize((["sm","md","lg","xl","xxl"] as any[])[parseInt(e.target.value)])}
                     style={{ flex: 1, accentColor: "var(--or)" }}
                   />
                   <span style={{ fontSize: "16px", color: "var(--tx2)" }}>A</span>
@@ -1839,7 +1116,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                 {/* Line height */}
                 <div className="reader-pop-label" style={{ marginTop: "10px" }}>Interligne</div>
                 <div className="reader-lh-row">
-                  {([["compact","≡",1.6],["normal","≡",1.85],["relaxed","≡",2.2]] as [LineHeight,string,number][]).map(([val, icon]) => (
+                  {([["compact","≡",1.6],["normal","≡",1.85],["relaxed","≡",2.2]] as any[]).map(([val, icon]) => (
                     <button
                       key={val}
                       className={`reader-lh-btn${lineHeight === val ? " is-on" : ""}`}
@@ -1855,13 +1132,11 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                 <div className="reader-ff-row">
                   <button
                     className={`reader-ff-btn${fontFamily === "sans" ? " is-on" : ""}`}
-                    data-ff="sans"
                     onClick={() => setFontFamily("sans")}
                     title="Calibri / Segoe UI — proche des PDFs techniques"
                   >Document</button>
                   <button
                     className={`reader-ff-btn${fontFamily === "serif" ? " is-on" : ""}`}
-                    data-ff="serif"
                     onClick={() => setFontFamily("serif")}
                     title="Lora / Georgia — lecture longue"
                   >Serif</button>
@@ -1891,7 +1166,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
           {renderMode === "html" && sections.length > 0 && (
             <button
               className={`reader-tbtn${showMiniToc ? " is-on" : ""}`}
-              onClick={() => setShowMiniToc(v => !v)}
+              onClick={() => setShowMiniToc(!showMiniToc)}
               title="Sommaire rapide"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -1900,11 +1175,11 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
             </button>
           )}
 
-          {/* Zoom control — style Word (− / 100% ▾ / +) */}
+          {/* Zoom control */}
           <div className="reader-zoom-ctrl">
             <button
               className="reader-tbtn reader-zoom-btn"
-              onClick={() => setReaderZoom(z => Math.max(50, z - 10))}
+              onClick={() => setReaderZoom(Math.max(50, readerZoom - 10))}
               disabled={readerZoom <= 50}
               title="Zoom arrière (−10%)"
             >−</button>
@@ -1912,7 +1187,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
               <button
                 className={`reader-tbtn reader-zoom-pct${showZoomPop ? " is-on" : ""}`}
                 onClick={() => {
-                  setShowZoomPop(v => !v);
+                  setShowZoomPop(!showZoomPop);
                   setShowTypoPop(false);
                   setShowHlPop(false);
                   setShowTtsPop(false);
@@ -1951,7 +1226,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
             </div>
             <button
               className="reader-tbtn reader-zoom-btn"
-              onClick={() => setReaderZoom(z => Math.min(200, z + 10))}
+              onClick={() => setReaderZoom(Math.min(200, readerZoom + 10))}
               disabled={readerZoom >= 200}
               title="Zoom avant (+10%)"
             >+</button>
@@ -2043,7 +1318,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
           <span className="reader-bc-cur">{inFocus ? currentSection?.title : breadcrumb}</span>
         </div>
 
-        {/* Focus header — sticky bar with back button, title and inline prev/next nav */}
+        {/* Focus header */}
         {inFocus && currentSection && (
           <div className="reader-focus-header">
             <button className="reader-back-btn" onClick={exitFocus}>
@@ -2116,7 +1391,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
             </div>
           )}
 
-          {/* Skeleton loader while HTML chunks load */}
+          {/* Skeleton loader */}
           {renderMode === "html" && !visibleHtml && !error && (
             <div className="reader-skeleton">
               {[["60%","28px"],["40%","18px"],["100%","15px"],["100%","15px"],["80%","15px"],["100%","56px",true],["100%","15px"],["72%","15px"],["100%","15px"],["55%","15px"]].map(([w, h, tall], i) => (
@@ -2150,7 +1425,6 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   >Suivant →</button>
                 </nav>
               )}
-              {/* Bottom exit shortcut */}
               {inFocus && (
                 <div style={{ textAlign: "center", paddingBottom: "32px" }}>
                   <button
@@ -2226,7 +1500,7 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
         title="Retour en haut"
       >↑</button>
 
-      {/* Mini-TOC floating panel — utilise l'outline backend (même source que la sidebar) */}
+      {/* Mini-TOC */}
       {showMiniToc && renderMode === "html" && (outline ?? []).length > 0 && (
         <nav className="reader-minitoc" aria-label="Sommaire rapide">
           <div className="reader-minitoc-hd">
@@ -2242,14 +1516,12 @@ export const MarkdownReader = forwardRef<ReaderHandle, Props>((
                   key={node.id}
                   className={`reader-minitoc-item rmt-l${Math.min(depth + 1, 4)}${isActive ? " is-active" : ""}`}
                   onClick={() => {
-                    // Navigation via section DOM (même logique que scrollToSection)
                     isProgrammaticScrollRef.current = true;
                     setTimeout(() => { isProgrammaticScrollRef.current = false; }, 600);
                     if (match) {
                       const el = contentRef.current?.querySelector<HTMLElement>(`section[data-sid="${match.id}"]`);
-                      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); setActiveSid(match.id); return; }
+                      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
                     }
-                    // Fallback : chercher le heading par texte
                     const norm = (s: string) => s.toLowerCase().replace(/\W+/g, "");
                     const target = norm(node.title);
                     const headings = contentRef.current?.querySelectorAll<HTMLElement>("h1,h2,h3,h4");

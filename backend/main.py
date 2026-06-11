@@ -39,6 +39,13 @@ CACHE_DIR.mkdir(exist_ok=True)
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 Mo
 DOC_ID_RE = re.compile(r"^[a-f0-9]{16}$")
 _EMPTY_ANNOTATIONS: dict[str, Any] = {"version": 1, "highlights": [], "notes": {}, "saved_at": 0}
+_EMPTY_STUDY: dict[str, Any] = {
+    "subject": "",
+    "tags": [],
+    "folder": "",
+    "status": "todo",
+    "priority": "medium",
+}
 FIG_ID_RE = re.compile(r"^f_\d+$")
 
 # État des traitements en cours, indexé par doc_id. Protégé par tasks_lock.
@@ -124,6 +131,15 @@ def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any], m
         if first_id and (ddir / "figures" / f"{first_id}.png").exists():
             cover_figure_id = first_id
 
+    study_path = ddir / "study.json"
+    study_data = dict(_EMPTY_STUDY)
+    if study_path.exists():
+        try:
+            with open(study_path, encoding="utf-8") as sf:
+                study_data.update(json.load(sf))
+        except Exception:
+            pass
+
     return {
         "doc_id": doc_id,
         "title": title,
@@ -138,6 +154,11 @@ def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any], m
         "size_bytes": source.stat().st_size if source and source.exists() else None,
         "cover_figure_id": cover_figure_id,
         "needs_reprocess": False,  # versioning du cache hors scope de cette PR
+        "subject": study_data.get("subject", ""),
+        "tags": study_data.get("tags", []),
+        "folder": study_data.get("folder", ""),
+        "status": study_data.get("status", "todo"),
+        "priority": study_data.get("priority", "medium"),
     }
 
 
@@ -327,13 +348,13 @@ def get_status(doc_id: str) -> JSONResponse:
 
 
 @app.get("/doc/{doc_id}/outline")
-def get_outline(doc_id: str) -> dict[str, Any]:
+def get_outline(doc_id: str) -> list[dict[str, Any]]:
     p = _doc_dir(doc_id) / "result.json"
     if not p.exists():
         raise HTTPException(404, "Document inconnu")
     try:
         with open(p, encoding="utf-8") as f:
-            return json.load(f).get("outline", {})
+            return json.load(f).get("outline", [])
     except (json.JSONDecodeError, OSError) as e:
         raise HTTPException(422, f"Cache corrompu : {e}")
 
@@ -502,7 +523,7 @@ async def reprocess_doc(
     # doc référencé (source externe), aucun fichier source.* en cache → tout est purgé,
     # mais `source` a déjà été résolu (chemin externe) avant la purge.
     for p in list(ddir.iterdir()):
-        if p.name == "source.pdf" or p.name.startswith("source."):
+        if p.name in ("source.pdf", "annotations.json", "study.json") or p.name.startswith("source."):
             continue
         if p.is_dir():
             shutil.rmtree(p, ignore_errors=True)
@@ -683,6 +704,59 @@ async def process_doc(doc_id: str, background_tasks: BackgroundTasks) -> JSONRes
     background_tasks.add_task(run_pipeline_bg, doc_id, source, ddir, filename, is_pdf)
     return JSONResponse({"doc_id": doc_id, "status": "processing", "progress": 0,
                          "message": "Analyse ajoutée à la file d'attente..."})
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Métadonnées d'étude (sujet, tags, dossier, statut, priorité)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/doc/{doc_id}/study")
+def get_study(doc_id: str) -> JSONResponse:
+    """Retourne les métadonnées d'étude (sujet, tags, dossier, statut, priorité)."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    path = ddir / "study.json"
+    if not path.exists():
+        return JSONResponse(dict(_EMPTY_STUDY))
+    try:
+        return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError):
+        return JSONResponse(dict(_EMPTY_STUDY))
+
+
+@app.put("/doc/{doc_id}/study")
+def put_study(doc_id: str, body: dict) -> dict[str, Any]:
+    """Sauvegarde les métadonnées d'étude. Écriture atomique."""
+    ddir = _doc_dir(doc_id)
+    if not ddir.exists():
+        raise HTTPException(404, "Document inconnu")
+    
+    # Validation minimale
+    subject = body.get("subject", "")
+    tags = body.get("tags", [])
+    folder = body.get("folder", "")
+    status = body.get("status", "todo")
+    priority = body.get("priority", "medium")
+    
+    if not isinstance(subject, str) or not isinstance(tags, list) or not isinstance(folder, str):
+        raise HTTPException(422, "Format de données invalide")
+    if status not in ("todo", "in_progress", "done"):
+        raise HTTPException(422, "Statut invalide")
+    if priority not in ("low", "medium", "high"):
+        raise HTTPException(422, "Priorité invalide")
+        
+    store = {
+        "subject": subject.strip(),
+        "tags": [str(t).strip() for t in tags if str(t).strip()],
+        "folder": folder.strip(),
+        "status": status,
+        "priority": priority,
+    }
+    path = ddir / "study.json"
+    _write_json_atomic(path, store)
+    return {"ok": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

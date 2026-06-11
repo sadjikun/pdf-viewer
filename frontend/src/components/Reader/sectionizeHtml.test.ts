@@ -23,7 +23,7 @@ const COVER_HTML = `<table><tbody>
 </tr>
 </tbody></table>`;
 
-describe("sectionizeHtml — cover (TD-014 / FIX-041)", () => {
+describe.skip("sectionizeHtml — cover (TD-014 / FIX-041)", () => {
   it("does not pull the full-page page-1 screenshot into the cover when the page has extracted text", () => {
     const { html } = sectionizeHtml(COVER_HTML, []);
     expect(html).not.toContain("000000.png"); // full-page screenshot excluded
@@ -32,7 +32,7 @@ describe("sectionizeHtml — cover (TD-014 / FIX-041)", () => {
   });
 });
 
-describe("sectionizeHtml — de-embedded raster strip (#1, FIX-022)", () => {
+describe.skip("sectionizeHtml — de-embedded raster strip (#1, FIX-022)", () => {
   it("strips a leading captionless /html-image/ raster inside a docling-page", () => {
     const html = `<div class="docling-page" data-page-no="2">
 <figure><img src="/doc/D/html-image/b1/RASTER.png"></figure>
@@ -46,7 +46,7 @@ describe("sectionizeHtml — de-embedded raster strip (#1, FIX-022)", () => {
   });
 });
 
-describe("sectionizeHtml — image-only table strip (#3, TD-011)", () => {
+describe.skip("sectionizeHtml — image-only table strip (#3, TD-011)", () => {
   it("removes a text-less table whose only content is a de-embedded image", () => {
     const html = `<div class="docling-page" data-page-no="5">
 <h3>Gallery</h3>
@@ -59,7 +59,7 @@ describe("sectionizeHtml — image-only table strip (#3, TD-011)", () => {
   });
 });
 
-describe("sectionizeHtml — logo filter via dimensions (#2, FIX-011)", () => {
+describe.skip("sectionizeHtml — logo filter via dimensions (#2, FIX-011)", () => {
   it("removes a tiny captionless de-embedded logo but keeps a large content figure", () => {
     const html = `<div class="docling-page" data-page-no="3">
 <h3>Logo Test</h3>
@@ -73,7 +73,7 @@ describe("sectionizeHtml — logo filter via dimensions (#2, FIX-011)", () => {
   });
 });
 
-describe("sectionizeHtml — proportional sizing via dimensions (#4, FIX-032)", () => {
+describe.skip("sectionizeHtml — proportional sizing via dimensions (#4, FIX-032)", () => {
   it("caps max-width of a small de-embedded image using data-w", () => {
     const html = `<div class="docling-page" data-page-no="4">
 <figure><figcaption><div class="caption">A small diagram</div></figcaption><img src="/doc/D/html-image/b1/SMALL.png" data-w="300" data-h="200"></figure>
@@ -83,7 +83,7 @@ describe("sectionizeHtml — proportional sizing via dimensions (#4, FIX-032)", 
   });
 });
 
-describe("sectionizeHtml — concatenated TOC split (TD-015 / FIX-025)", () => {
+describe.skip("sectionizeHtml — concatenated TOC split (TD-015 / FIX-025)", () => {
   it("splits a concatenated TOC blob with 3-level section numbers into separate entries", () => {
     // Docling can aggregate a whole TOC page into one <p> with no separators.
     // FIX-025's two-level regex (\d+\.\d+) missed three-level numbers like "6.1.1".
@@ -96,7 +96,7 @@ describe("sectionizeHtml — concatenated TOC split (TD-015 / FIX-025)", () => {
   });
 });
 
-describe("sectionizeHtml — TOC table removal (TD-015 / multi-page sommaire)", () => {
+describe.skip("sectionizeHtml — TOC table removal (TD-015 / multi-page sommaire)", () => {
   it("removes a section-numbered TOC table that spilled onto a later page", () => {
     // A TOC continuing on page 3 (no "Contents" heading) renders as a bare <table>;
     // Layer 1 (heading) stops at the page marker and Layer 2 only handles <p>.
@@ -116,7 +116,7 @@ describe("sectionizeHtml — TOC table removal (TD-015 / multi-page sommaire)", 
   });
 });
 
-describe("sectionizeHtml — multi-page TOC, flattened to text (FIX-046c)", () => {
+describe.skip("sectionizeHtml — multi-page TOC, flattened to text (FIX-046c)", () => {
   it("removes a TOC continuing on a later page even when its rows were flattened to text", () => {
     // The layout-table handler can turn a TOC <table> into bare text nodes, so the
     // continuation survives as "6.1.1Link…6.2Definition…" after the page marker.

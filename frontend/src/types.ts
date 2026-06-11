@@ -82,6 +82,14 @@ export interface HtmlManifestEntry {
   file: string;
 }
 
+export interface StudyMetadata {
+  subject: string;
+  tags: string[];
+  folder: string;
+  status: "todo" | "in_progress" | "done";
+  priority: "low" | "medium" | "high";
+}
+
 export interface LibraryDocument {
   doc_id: string;
   title: string;
@@ -96,6 +104,11 @@ export interface LibraryDocument {
   size_bytes: number | null;
   cover_figure_id: string | null;
   needs_reprocess: boolean;
+  subject: string;
+  tags: string[];
+  folder: string;
+  status: "todo" | "in_progress" | "done";
+  priority: "low" | "medium" | "high";
 }
 
 export interface LibraryTask {

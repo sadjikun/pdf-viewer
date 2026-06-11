@@ -1,4 +1,4 @@
-import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse, RegisterPreview, RegisterResult } from "./types";
+import type { AnnotationStore, DocResult, DocStatus, LibraryResponse, ProcessingResponse, RegisterPreview, RegisterResult, StudyMetadata } from "./types";
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -154,6 +154,25 @@ export async function cleanupCache(
 ): Promise<{ cleaned_directories: number; freed_space_mb: number }> {
   const res = await fetch(`${API_BASE}/cache/cleanup?max_age_days=${maxAgeDays}`, {
     method: "POST",
+  });
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function getStudyMetadata(docId: string): Promise<StudyMetadata> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/study`);
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res));
+  return res.json();
+}
+
+export async function saveStudyMetadata(
+  docId: string,
+  metadata: StudyMetadata,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/doc/${docId}/study`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(metadata),
   });
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
   return res.json();

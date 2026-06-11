@@ -20,13 +20,16 @@ import type { ReaderTheme, ReaderHandle } from "./components/Reader/MarkdownRead
 import type { DocResult, LibraryResponse, OutlineNode } from "./types";
 import "./App.css";
 
+import { StudyTab } from "./components/Study/StudyTab";
+
 const LS_KEY = "pdf-viewer:lastDocId";
 const THEME_KEY = "pdf-viewer:theme";
-type Tab = "outline" | "gallery" | "tables";
+type Tab = "outline" | "gallery" | "tables" | "study";
 const TAB_TITLES: Record<Tab, string> = {
   outline: "Sommaire",
   gallery: "Galerie",
   tables: "Tables",
+  study: "Étude",
 };
 
 const THEMES = [
@@ -543,13 +546,24 @@ function App() {
           >
             Tables
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "study"}
+            className={`app-tab${tab === "study" ? " is-active" : ""}`}
+            onClick={() => setTab("study")}
+          >
+            Étude
+          </button>
         </div>
         {tab === "outline" ? (
           <Outline nodes={doc.outline} onSelect={handleSelect} activeId={activeId} />
         ) : tab === "gallery" ? (
           <Gallery docId={doc.doc_id} figures={figures} onSelect={handleGallerySelect} onCaption={handleCaptionFigures} />
-        ) : (
+        ) : tab === "tables" ? (
           <Tables tables={doc.tables ?? []} onGotoPage={gotoPage} />
+        ) : (
+          <StudyTab docId={doc.doc_id} onMetadataChange={refreshLibrary} />
         )}
       </aside>
       <main className="app-main">
