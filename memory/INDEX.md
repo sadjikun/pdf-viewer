@@ -6,7 +6,7 @@ Pages actives : 11
 Wiki de connaissance projet, construit par MHDINGBI pour ses agents IA
 (Codex, Antigravity, Gemini) et porté sur main/develop pour partage.
 
-> **État de fraîcheur (2026-06-04)** — alignés sur la branche `develop` :
+> **État de fraîcheur (2026-06-11)** — alignés sur la branche `develop` :
 > `HANDOFF` (section 0), `cache-schema`, `architecture`, `LOG` (entrée du haut).
 > **Directionnels** (cap projet, pas l'implémentation exacte) : `VISION`, `PRD`,
 > `ROADMAP`, `decisions`. **Historiques branche v2** (référencent du code partiellement

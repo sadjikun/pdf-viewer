@@ -6,46 +6,25 @@
 
 ---
 
-## 0. ÉTAT ACTUEL — branche `develop` (MAJ 2026-06-04)
+## 0. ÉTAT ACTUEL — branche `develop` (MAJ 2026-06-11)
 
-> 🚨 **À LIRE EN PREMIER — changement de base de travail.**
-> **N'utilise plus `feature/v2-tables-reader-ocr`** (elle est `behind 48` commits,
-> larguée et non rebasable proprement). La nouvelle base d'intégration synchronisée
-> est **`develop`**, qui est désormais EN AVANCE sur v2 (la PR #5 a été découpée et
-> mergée sur `main` en Phase 5, puis le reste portable repris sur `develop` en
-> Phase 6 / PRs #26→#32). En début de session :
-> ```
-> git fetch origin
-> git checkout develop && git pull --ff-only origin develop
-> git checkout -b feature/ma-tache   # toujours créer tes branches DEPUIS develop
-> ```
-> Détail Git : tes commits sont signés `sadjikun <hadylimz@gmail.com>`, ce qui n'est
-> pas l'identité du repo. Configure `git config user.name`/`user.email` côté ta
-> machine pour une attribution correcte sur les prochaines PRs.
+> 🚨 **À LIRE EN PREMIER — Phase 1 Terminée.**
+> **La Phase 1 (Confiance)** est désormais entièrement complétée.
+> Les travaux sur cette phase ont livré :
+> - **L1/L2 bibliothèque et étude** : dossiers/matières/tags et persistance locale via `study.json` dans chaque répertoire de cache.
+> - **Q1/Q2 tests** : ajout de `test_smoke.py` (21 tests, 24 routes de main.py couvertes) ; correction de la signature `/outline` en `list[dict]` ; Vitest frontend configuré pour passer sur `develop`.
+> - **Reprocess** : `study.json` et `annotations.json` exclus de la purge de retraitement.
+> 
+> Tout commit doit être fait depuis `develop`.
 
-> ⚠️ Les sections 1-4 ci-dessous datent du **2026-05-25** et décrivent la branche
-> v2 d'origine (FIX-033→068, Reader câblé, fast path, de-embedding). **Pour
-> travailler sur `develop`, lire d'abord cette section + `cache-schema.md` +
-> `architecture.md`** (mis à jour). Certains FIX référencent du code absent de develop.
-
-**Travailler sur `develop`** : `git fetch origin && git checkout develop && git rebase origin/main`
-régulièrement (ne pas laisser diverger comme la branche v2 l'a fait).
-
-**Présent sur develop** : async + polling, Library, 10 thèmes, Reader Markdown/HTML
-(hooks extraits dans `hooks/` mais **non câblés** dans MarkdownReader.tsx), multi-format
-MarkItDown, OCR (Tesseract/pix2tex/Texify), Florence-2 captioning, annotations + fiche,
-PWA, launcher pywebview Windows, cleanup/thumbnail/reprocess(force_ocr), **bibliothèque
-documentaire** (référencement par chemin sans copie → `extraction_mode:"registered"`).
-27 endpoints. doc_id toujours 16 hex (`^[a-f0-9]{16}$`).
+**Présent sur develop** : async + polling, Library (avec filtrage matières/dossiers/tags et badges d'étude), 10 thèmes, Reader Markdown/HTML (hooks extraits dans `hooks/` mais non câblés dans MarkdownReader.tsx), multi-format MarkItDown, OCR (Tesseract/pix2tex/Texify), Florence-2 captioning, annotations + fiche (R11/R12), PWA, launcher pywebview Windows, cleanup/thumbnail/reprocess(force_ocr), bibliothèque documentaire (`extraction_mode:"registered"`).
 
 **Absent de develop** (présent sur la branche v2) : fast path pypdfium2
 (`_extraire_natif`), de-embedding images (`/html-image`), `/health`, `/app-mode`
 (à refactorer — lecture env figée à l'import), endpoint benchmark, Reader câblé aux hooks,
 ModeChooser, son installeur production complet.
 
-**Prochaines pistes** : câbler les hooks dans MarkdownReader (TD côté équipe sadjikun),
-tester les features ML en local (modèles non en cache CI), valider le rendu navigateur
-(Compare/themes/Library/register), éventuellement de-embedding pour alléger le HTML.
+**Prochaines pistes** : Lancer la Phase 2 — Intelligence (indexation locale et Q&A IA local), câbler les hooks dans MarkdownReader, et éventuellement ré-introduire le de-embedding.
 
 ---
 

@@ -122,7 +122,7 @@ une GED d'entreprise.
 
 | Phase | Statut |
 |-------|--------|
-| Phase 1 — Confiance | 🔄 En cours — R11 ✅ / R12 ✅ (notes durables + export fiche) |
+| Phase 1 — Confiance | ✅ Terminée (2026-06-11) — L1/L2/R11/R12/Q1/Q2 |
 | Phase 2 — Intelligence | ⬜ À démarrer |
 | Phase 3 — Diffusion | 🔄 En cours — launcher fenêtre pywebview ✅ ; packaging statique restant |
 
