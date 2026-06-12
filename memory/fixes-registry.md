@@ -1578,6 +1578,18 @@ for task_idx in failed_task_indices:
 
 ---
 
+### FIX-080 — Comparaison stricte de PIPELINE_VERSION pour l'invalidation du cache
+**Fichiers :** `backend/pipeline.py` (définition), `backend/main.py` (`_library_item_from_result` + `get_raw`), `frontend/src/types.ts`
+**Problème :** Lors des mises à jour du pipeline d'extraction de texte (comme le passage à Docling v2 ou l'ajout de métadonnées sémantiques), les anciens documents déjà en cache ne bénéficient pas des nouvelles fonctionnalités s'ils ne sont pas retraités, ce qui peut provoquer des incohérences ou des données manquantes.
+**Fix :** Définition d'un `PIPELINE_VERSION` global (actuellement `"0.2.0"`). Lors de l'écriture du cache (`result.json`), cette version est enregistrée. Lors du chargement de la bibliothèque ou du document, on compare la version en cache avec la version courante. Si elles diffèrent, `needs_reprocess` est positionné à `True`, ce qui déclenche l'affichage d'un bandeau d'avertissement et un bouton de retraitement immédiat.
+**Code clé :**
+```python
+# backend/main.py
+needs_reprocess = result.get("pipeline_version") != PIPELINE_VERSION
+```
+
+---
+
 ## Ajouter un nouveau FIX
 
 Incrémenter depuis le dernier existant. Format :

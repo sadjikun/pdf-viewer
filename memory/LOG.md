@@ -3,6 +3,18 @@
 Append-only. Entrées les plus récentes en haut.
 Une entrée par session de travail significative.
 
+### 2026-06-12 — Branche `develop` : Améliorations techniques et architecturales (Vector Search, Reprocessing, Ollama) (antigravity)
+**Fichiers modifiés/créés :** `backend/main.py`, `backend/pipeline.py`, `backend/qa.py`, `backend/search.py`, `backend/tests/conftest.py`, `backend/vector_search.py` (créé), `backend/tests/test_vector_search.py` (créé), `frontend/src/App.css`, `frontend/src/App.tsx`, `frontend/src/api.ts`, `frontend/src/components/Library/Library.css`, `frontend/src/components/Library/Library.tsx`, `frontend/src/types.ts`.
+**Résumé :**
+- **Recherche Sémantique Locale (Vector Search)** : Ajout d'une recherche sémantique autonome hors-ligne via Ollama embeddings et stockage SQLite compact (`BLOB` de floats). Calcul de similarité cosinus en Python pur.
+- **Gestion de version et reprocessing** : Détection automatique des changements de version du pipeline (`PIPELINE_VERSION = "0.2.0"`) avec affichage d'un bandeau d'alerte UI incitant l'utilisateur à retraiter le document.
+- **Démarrage automatique d'Ollama** : Détection automatique et lancement asynchrone en arrière-plan d'Ollama sous Windows s'il est hors-ligne lors des appels d'état.
+- **Validation** : Rapprochement de la suite complète pytest backend (67/67 verts) et compilation de production frontend réussie.
+**Fixes introduits :** aucun
+**Points ouverts :** aucun
+
+---
+
 ### 2026-06-11 — Branche `develop` : Résolution TD-025 et correctifs ESLint / TypeScript (antigravity)
 **Fichiers modifiés/créés :** `frontend/src/components/Reader/MarkdownReader.tsx` (modifié), `frontend/src/components/Reader/hooks/useAnnotations.ts` (modifié), `frontend/src/components/Reader/hooks/useContentLoading.ts` (modifié), `frontend/src/components/Reader/hooks/useSearch.ts` (modifié), `frontend/src/components/Reader/hooks/useImageLightbox.ts` (modifié), `frontend/src/components/Study/StudyTab.tsx` (modifié), `frontend/src/components/Library/Library.tsx` (modifié), `TECHNICAL_DEBT.md` (modifié).
 **Résumé :**

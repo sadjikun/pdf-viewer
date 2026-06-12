@@ -1308,13 +1308,51 @@
   flex: 1;
 }
 
+.library-content-search-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
 .library-content-search-container {
   position: relative;
-  flex: 1;
+  width: 100%;
 }
 
 .library-search-content {
   width: 100%;
+}
+
+.library-search-mode-toggle {
+  display: inline-flex;
+  background: var(--bg-app);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  width: fit-content;
+  align-self: flex-start;
+}
+
+.library-search-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: calc(var(--radius-sm) - 1px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.library-search-mode-btn.is-active {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.library-search-mode-btn:hover:not(.is-active) {
+  color: var(--text-primary);
 }
 
 .library-search-spinner {

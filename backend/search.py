@@ -47,6 +47,11 @@ def init_db() -> None:
                 )
             """)
             conn.commit()
+    try:
+        from vector_search import init_vector_db
+        init_vector_db()
+    except Exception as e:
+        log.error("Failed to initialize vector database: %s", e)
 
 def index_document(doc_id: str) -> None:
     # Ensure BeautifulSoup is imported inside the function to avoid overhead or optional import issues

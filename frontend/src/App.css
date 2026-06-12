@@ -284,3 +284,34 @@
     width: 100%;
   }
 }
+
+.app-reprocess-banner {
+  background: var(--error-bg, #2a1517);
+  border-bottom: 1px solid var(--error-border, #5b2a2e);
+  color: var(--fg, #e2e8f0);
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  z-index: 10;
+  position: relative;
+}
+
+.app-reprocess-banner-btn {
+  background: var(--accent, #ff8c00);
+  color: #fff;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.app-reprocess-banner-btn:hover {
+  opacity: 0.9;
+}

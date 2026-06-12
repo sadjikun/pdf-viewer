@@ -132,6 +132,8 @@ def _clean_title(title: str | None) -> str:
 
 def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any], mtime: float) -> dict[str, Any]:
     """Construit une entrée de catalogue à partir d'un result.json en cache."""
+    from pipeline import PIPELINE_VERSION
+
     source = ddir / "source.pdf"
     if not source.exists():
         source_files = sorted(ddir.glob("source.*"))
@@ -155,6 +157,8 @@ def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any], m
         except Exception:
             pass
 
+    needs_reprocess = result.get("pipeline_version") != PIPELINE_VERSION
+
     return {
         "doc_id": doc_id,
         "title": title,
@@ -168,7 +172,7 @@ def _library_item_from_result(doc_id: str, ddir: Path, result: dict[str, Any], m
         "modified_at": mtime,
         "size_bytes": source.stat().st_size if source and source.exists() else None,
         "cover_figure_id": cover_figure_id,
-        "needs_reprocess": False,  # versioning du cache hors scope de cette PR
+        "needs_reprocess": needs_reprocess,
         "subject": study_data.get("subject", ""),
         "tags": study_data.get("tags", []),
         "folder": study_data.get("folder", ""),
@@ -204,6 +208,11 @@ def run_pipeline_bg(doc_id: str, src_path: Path, ddir: Path, filename: str, is_p
         try:
             from search import index_document
             index_document(doc_id)
+            try:
+                from vector_search import index_document_vectors
+                index_document_vectors(doc_id)
+            except Exception:
+                log.exception("Impossible d'indexer sémantiquement le document %s après extraction", doc_id)
         except Exception:
             log.exception("Impossible d'indexer le document %s après extraction", doc_id)
 
@@ -396,12 +405,15 @@ def get_figure(doc_id: str, fig_id: str) -> FileResponse:
 
 @app.get("/doc/{doc_id}/raw")
 def get_raw(doc_id: str) -> dict[str, Any]:
+    from pipeline import PIPELINE_VERSION
     p = _doc_dir(doc_id) / "result.json"
     if not p.exists():
         raise HTTPException(404, "Document inconnu")
     try:
         with open(p, encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            data["needs_reprocess"] = data.get("pipeline_version") != PIPELINE_VERSION
+            return data
     except (json.JSONDecodeError, OSError) as e:
         raise HTTPException(422, f"Cache corrompu : {e}")
 
@@ -1119,12 +1131,16 @@ async def caption_figures(doc_id: str) -> JSONResponse:
 
 
 @app.get("/search")
-def search_documents(q: str = "") -> list[dict[str, Any]]:
-    """Recherche plein-texte transversale dans toute la bibliothèque."""
-    from search import search_index
+def search_documents(q: str = "", mode: str = "fts", model: str = "nomic-embed-text") -> list[dict[str, Any]]:
+    """Recherche transversale dans toute la bibliothèque (FTS5 ou sémantique locale)."""
     if not q or not q.strip():
         return []
-    return search_index(q)
+    if mode == "semantic":
+        from vector_search import search_semantic
+        return search_semantic(q, preferred_model=model)
+    else:
+        from search import search_index
+        return search_index(q)
 
 
 @app.get("/ollama/status")

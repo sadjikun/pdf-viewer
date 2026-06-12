@@ -178,8 +178,14 @@ export async function saveStudyMetadata(
   return res.json();
 }
 
-export async function searchContent(query: string): Promise<SearchHit[]> {
-  const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+export async function searchContent(
+  query: string,
+  mode: "fts" | "semantic" = "fts",
+  model = "nomic-embed-text",
+): Promise<SearchHit[]> {
+  const res = await fetch(
+    `${API_BASE}/search?q=${encodeURIComponent(query)}&mode=${mode}&model=${encodeURIComponent(model)}`
+  );
   if (!res.ok) throw new ApiError(res.status, await readDetail(res));
   return res.json();
 }

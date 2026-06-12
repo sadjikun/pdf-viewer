@@ -44,6 +44,7 @@ export interface DocResult {
   file_type?: string;
   extraction_mode?: ExtractionMode | "unknown";
   source_path?: string;
+  needs_reprocess?: boolean;
 }
 
 // Réponse de POST /process quand le traitement démarre en arrière-plan.

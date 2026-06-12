@@ -43,3 +43,13 @@ def doc_id():
         yield TEST_DOC_ID
     finally:
         shutil.rmtree(ddir, ignore_errors=True)
+
+
+def pytest_sessionstart(session):
+    """Clean up persistent test search database at session start."""
+    db_path = Path(__file__).resolve().parent.parent / "cache" / "search_index.db"
+    if db_path.exists():
+        try:
+            db_path.unlink()
+        except Exception:
+            pass

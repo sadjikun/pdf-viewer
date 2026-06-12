@@ -43,6 +43,8 @@ _MIN_TITLE_LEN = 3
 _MAX_TITLE_LEN = 120
 _TEXT_NATIVE_THRESHOLD = 50
 
+PIPELINE_VERSION = "0.2.0"
+
 BATCH_SIZE = int(os.environ.get("PDF_BATCH_SIZE", "30"))
 BATCH_THRESHOLD = int(os.environ.get("PDF_BATCH_THRESHOLD", "50"))
 
@@ -428,6 +430,7 @@ def _convertir_simple(
         "n_pages": len(pages),
         "n_figures": len(figures),
         "n_tables": len(tables),
+        "pipeline_version": PIPELINE_VERSION,
     }
 
 
@@ -532,6 +535,7 @@ def _convertir_batch(
         "n_pages": len(all_pages),
         "n_figures": len(all_figures),
         "n_tables": len(all_tables),
+        "pipeline_version": PIPELINE_VERSION,
     }
 
 
@@ -625,4 +629,5 @@ def convertir_generic(
         "n_tables": 0,
         "extraction_mode": "markitdown",
         "file_type": ext.lstrip("."),
+        "pipeline_version": PIPELINE_VERSION,
     }

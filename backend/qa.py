@@ -9,21 +9,84 @@ log = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
-def check_ollama_status() -> dict:
-    """Verifies connection to local Ollama and lists available models."""
+def _try_start_ollama() -> bool:
+    import os
+    import sys
+    import shutil
+    import subprocess
+    
+    # 1. Check in PATH
+    exe_path = shutil.which("ollama")
+    
+    # 2. Check standard Windows paths if not in PATH
+    if not exe_path and sys.platform == "win32":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        candidates = []
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "Programs" / "Ollama" / "ollama.exe")
+        candidates.append(Path("C:/Program Files/Ollama/ollama.exe"))
+        candidates.append(Path("C:/Program Files (x86)/Ollama/ollama.exe"))
+        
+        for c in candidates:
+            if c.exists():
+                exe_path = str(c)
+                break
+                
+    if not exe_path:
+        return False
+        
     try:
-        res = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3.0)
-        if res.status_code == 200:
-            data = res.json()
-            models = []
-            for m in data.get("models", []):
-                models.append({
-                    "name": m.get("name"),
-                    "size": m.get("size", 0)
-                })
-            return {"available": True, "models": models}
+        log.info("Starting Ollama background process: %s", exe_path)
+        popen_flags = {}
+        if sys.platform == "win32":
+            popen_flags["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+            
+        subprocess.Popen(
+            [exe_path, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            **popen_flags
+        )
+        return True
     except Exception as e:
-        log.warning("Ollama connection failed: %s", e)
+        log.error("Failed to start Ollama process: %s", e)
+        return False
+
+
+def check_ollama_status() -> dict:
+    """Verifies connection to local Ollama and lists available models. Auto-starts Ollama if offline."""
+    import time
+    
+    def try_connect():
+        try:
+            res = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2.0)
+            if res.status_code == 200:
+                data = res.json()
+                models = []
+                for m in data.get("models", []):
+                    models.append({
+                        "name": m.get("name"),
+                        "size": m.get("size", 0)
+                    })
+                return {"available": True, "models": models}
+        except Exception:
+            pass
+        return None
+
+    status = try_connect()
+    if status:
+        return status
+
+    # Connection failed, try to start Ollama in background
+    if _try_start_ollama():
+        # Wait up to 5 seconds (10 * 0.5s) for the server to bind
+        for _ in range(10):
+            time.sleep(0.5)
+            status = try_connect()
+            if status:
+                log.info("Ollama successfully started and connected.")
+                return status
     
     return {"available": False, "models": []}
 

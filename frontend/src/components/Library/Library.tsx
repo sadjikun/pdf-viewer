@@ -54,6 +54,7 @@ export function Library({
 }: Props) {
   const [query, setQuery] = useState("");
   const [contentQuery, setContentQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<"fts" | "semantic">("fts");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -74,7 +75,7 @@ export function Library({
       setSearchLoading(true);
       setSearchError(null);
       try {
-        const hits = await searchContent(q);
+        const hits = await searchContent(q, searchMode);
         setSearchHits(hits);
         setActiveTab("content");
       } catch (err) {
@@ -86,7 +87,7 @@ export function Library({
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [contentQuery]);
+  }, [contentQuery, searchMode]);
 
   const [sort, setSort] = useState<SortKey>("recent");
   const [regPath, setRegPath] = useState("");
@@ -473,18 +474,38 @@ export function Library({
               placeholder="Rechercher par titre/méta..."
               className="library-search"
             />
-            <div className="library-content-search-container">
-              <input
-                value={contentQuery}
-                onChange={(event) => setContentQuery(event.target.value)}
-                placeholder="Rechercher dans le texte..."
-                className="library-search library-search-content"
-              />
-              {searchLoading && (
-                <span className="library-search-spinner" aria-hidden="true">
-                  ⌛
-                </span>
-              )}
+            <div className="library-content-search-group">
+              <div className="library-content-search-container">
+                <input
+                  value={contentQuery}
+                  onChange={(event) => setContentQuery(event.target.value)}
+                  placeholder="Rechercher dans le texte..."
+                  className="library-search library-search-content"
+                />
+                {searchLoading && (
+                  <span className="library-search-spinner" aria-hidden="true">
+                    ⌛
+                  </span>
+                )}
+              </div>
+              <div className="library-search-mode-toggle">
+                <button
+                  type="button"
+                  className={`library-search-mode-btn ${searchMode === "fts" ? "is-active" : ""}`}
+                  onClick={() => setSearchMode("fts")}
+                  title="Recherche par mots-clés exacts (rapide)"
+                >
+                  Mots-clés
+                </button>
+                <button
+                  type="button"
+                  className={`library-search-mode-btn ${searchMode === "semantic" ? "is-active" : ""}`}
+                  onClick={() => setSearchMode("semantic")}
+                  title="Recherche sémantique par IA locale (compréhension des concepts)"
+                >
+                  Sémantique (IA)
+                </button>
+              </div>
             </div>
           </div>
           <div className="library-segments">

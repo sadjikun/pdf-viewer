@@ -585,6 +585,14 @@ function App() {
         )}
       </aside>
       <main className="app-main">
+        {doc.needs_reprocess && (
+          <div className="app-reprocess-banner" role="alert">
+            <span>⚠️ Ce document a été extrait avec une version antérieure de l'application. Certaines fonctionnalités (recherche sémantique, formules) peuvent être dégradées ou indisponibles.</span>
+            <button type="button" className="app-reprocess-banner-btn" onClick={() => handleReprocess(false)}>
+              Mettre à jour l'analyse
+            </button>
+          </div>
+        )}
         <Suspense fallback={<p className="viewer-msg">Chargement…</p>}>
           {effectiveViewMode === "compare" ? (
             <div className="app-compare">
